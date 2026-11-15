@@ -1,0 +1,6 @@
+Get:1 file:/etc/apt/mirrors/raye.list Mirrorlist [42 B]
+Hit:2 https://dl.rayelinux.com/apt resolute InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu resolute InRelease
+Get:4 http://security.ubuntu.com/ubuntu resolute-security InRelease [126 kB]
+Fetched 126 kB in 1s (126 kB/s)
+Reading package lists...

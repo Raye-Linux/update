@@ -1,0 +1,12 @@
+Get:1 file:/etc/apt/mirrors/raye.list Mirrorlist [42 B]
+Ign:2 https://dl.rayelinux.com/apt resolute InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu resolute InRelease
+Get:4 http://security.ubuntu.com/ubuntu resolute-security InRelease [126 kB]
+Ign:5 https://dl.rayelinux.com/apt resolute Release
+Get:6 http://security.ubuntu.com/ubuntu resolute-security/main amd64 Packages [412 kB]
+Err:7 https://dl.rayelinux.com/apt resolute/main amd64 Packages
+  404  Not Found [IP: 185.199.110.153 443]
+Fetched 538 kB in 1s (538 kB/s)
+Reading package lists...
+E: Failed to fetch mirror+file:/etc/apt/mirrors/raye.list/dists/resolute/main/binary-amd64/Packages  404  Not Found [IP: 185.199.110.153 443]
+E: Some index files failed to download. They have been ignored, or old ones used instead.

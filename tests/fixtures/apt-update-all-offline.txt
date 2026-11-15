@@ -1,0 +1,12 @@
+Get:1 file:/etc/apt/mirrors/raye.list Mirrorlist [42 B]
+Err:2 http://archive.ubuntu.com/ubuntu resolute InRelease
+  Temporary failure resolving 'archive.ubuntu.com'
+Err:3 http://security.ubuntu.com/ubuntu resolute-security InRelease
+  Temporary failure resolving 'security.ubuntu.com'
+Err:4 https://dl.rayelinux.com/apt resolute InRelease
+  Temporary failure resolving 'dl.rayelinux.com'
+Reading package lists...
+W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/resolute/InRelease  Temporary failure resolving 'archive.ubuntu.com'
+W: Failed to fetch http://security.ubuntu.com/ubuntu/dists/resolute-security/InRelease  Temporary failure resolving 'security.ubuntu.com'
+W: Failed to fetch mirror+file:/etc/apt/mirrors/raye.list/dists/resolute/InRelease  Temporary failure resolving 'dl.rayelinux.com'
+W: Some index files failed to download. They have been ignored, or old ones used instead.

@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart to finish updating when it is time
+Documentation=https://github.com/Raye-Linux/update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update restart-due

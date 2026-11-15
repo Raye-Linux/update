@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "phase": "armed",
+  "waitReason": "",
+  "pending": [
+    {
+      "name": "firefox",
+      "from": "1:140.0~build1",
+      "to": "1:141.0~build2",
+      "origin": "mozilla:mozilla",
+      "kind": "app",
+      "restart": false
+    },
+    {
+      "name": "libc6",
+      "from": "2.42-1ubuntu1",
+      "to": "2.42-1ubuntu2",
+      "origin": "Ubuntu:26.04/resolute-security",
+      "kind": "security",
+      "restart": true
+    },
+    {
+      "name": "linux-image-7.0.0-12-generic",
+      "from": "",
+      "to": "7.0.0-12.12",
+      "origin": "Ubuntu:26.04/resolute-updates",
+      "kind": "kernel",
+      "restart": true
+    }
+  ],
+  "count": 3,
+  "downloadedBytes": 0,
+  "totalBytes": 0,
+  "needsRestart": true,
+  "readyId": "5f0c2a9e41b7",
+  "pausedUntil": 0,
+  "activeHours": {
+    "start": 8,
+    "end": 17
+  },
+  "autoRestart": false,
+  "armed": {
+    "then": "restart",
+    "at": 1793500000
+  },
+  "lastCheck": 1793462520,
+  "lastInstall": {
+    "time": 1793376000,
+    "count": 14,
+    "firmware": 0,
+    "ok": true
+  },
+  "kernelChange": true,
+  "firmware": [],
+  "error": null,
+  "installAttempts": 0,
+  "brokenSources": [],
+  "checkedEverything": true,
+  "state": "ready",
+  "updates": 3,
+  "packages": [
+    "firefox",
+    "libc6",
+    "linux-image-7.0.0-12-generic"
+  ],
+  "reason": "",
+  "checked": 1793462520,
+  "ready_id": "5f0c2a9e41b7",
+  "paused_until": 0,
+  "installPercent": 0
+}

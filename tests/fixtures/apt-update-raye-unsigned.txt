@@ -1,0 +1,9 @@
+Get:1 file:/etc/apt/mirrors/raye.list Mirrorlist [42 B]
+Get:2 https://dl.rayelinux.com/apt resolute InRelease [3214 B]
+Err:2 https://dl.rayelinux.com/apt resolute InRelease
+  The following signatures couldn't be verified because the public key is not available: NO_PUBKEY 9F2A1C4B7E650D13
+Hit:3 http://archive.ubuntu.com/ubuntu resolute InRelease
+Hit:4 http://security.ubuntu.com/ubuntu resolute-security InRelease
+Reading package lists...
+W: GPG error: mirror+file:/etc/apt/mirrors/raye.list resolute InRelease: The following signatures couldn't be verified because the public key is not available: NO_PUBKEY 9F2A1C4B7E650D13
+E: The repository 'mirror+file:/etc/apt/mirrors/raye.list resolute InRelease' is not signed.

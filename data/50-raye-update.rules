@@ -1,0 +1,17 @@
+// Raye Update: people who administer this computer (group sudo) can check
+// for updates, arm them for the next restart, pause them and set active
+// hours without typing their password, as long as they are sitting at it.
+// Everything goes through /usr/libexec/raye-update (org.raye.update).
+polkit.addRule(function (action, subject) {
+    if (!subject.local || !subject.active || !subject.isInGroup("sudo"))
+        return polkit.Result.NOT_HANDLED;
+    if (action.id == "org.raye.update")      // arm, disarm, pause, active hours
+        return polkit.Result.YES;
+    // check now, and the Install button for updates that need no restart
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        (action.lookup("unit") == "raye-update.service" ||
+         action.lookup("unit") == "raye-update-live@now.service") &&
+        action.lookup("verb") == "start")
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+});

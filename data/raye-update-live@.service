@@ -1,0 +1,18 @@
+[Unit]
+Description=Install updates that need no restart
+Documentation=https://github.com/Raye-Linux/update
+# %i: "auto" after a download, "now" from the Install button. Never named in
+# debian/rules: dpkg must not stop it while it upgrades this very package.
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update install-live %i
+# killed (out of memory, the 2 h limit): it is not installing any more
+ExecStopPost=/usr/libexec/raye-update live-ended
+Nice=10
+IOSchedulingClass=idle
+# a restart or shutdown waits for dpkg to finish instead of cutting it
+KillSignal=SIGCONT
+TimeoutStopSec=20min
+TimeoutStartSec=2h

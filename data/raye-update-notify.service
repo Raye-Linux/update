@@ -1,0 +1,17 @@
+[Unit]
+Description=Tell that updates are ready
+PartOf=graphical-session.target
+After=graphical-session.target
+# the install rewrites state.json in bursts; a start limit here fails the
+# path unit too, and the final "ready" is never announced
+StartLimitIntervalSec=0
+
+[Service]
+# not oneshot: the script waits for the answer to its notification, and a
+# start job left waiting makes systemd refuse to end the session (Log out
+# did nothing while the notice was up)
+Type=exec
+ExecStart=/usr/libexec/raye-update-notify
+
+[Install]
+WantedBy=graphical-session.target

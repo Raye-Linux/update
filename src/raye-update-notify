@@ -1,0 +1,74 @@
+#!/bin/sh
+# User side of Raye Update: when a new set of updates waits for a restart,
+# say so once, with a button to restart and install right away.
+set -u
+state=${RAYE_UPDATE_STATE:-/var/lib/raye-update/state.json}
+seen=${XDG_STATE_HOME:-$HOME/.local/state}/raye/updates-notified
+[ -r "$state" ] || exit 0
+
+# one line each: the key of the set that needs a restart (empty when nothing
+# does), how many updates wait for it, and their names. Updates that need no
+# restart install on their own and are never announced here.
+info=$(python3 - "$state" <<'PY' 2>/dev/null
+import hashlib, json, sys
+s = json.load(open(sys.argv[1]))
+if "phase" in s:
+    wait = [p for p in s.get("pending") or [] if p.get("restart", True)]
+    fw = s.get("firmware") or []
+    names = [p.get("name", "") for p in wait] + [f.get("device", "") for f in fw]
+    ready = s.get("phase") == "ready" and s.get("needsRestart") is True and names
+    # versions in the key: the next libc6 or raye-theme has the same name
+    items = [f"{p.get('name', '')}={p.get('to', '')}" for p in wait]
+    items += [f"fw:{f.get('deviceId', '')}={f.get('to', '')}" for f in fw]
+    key = hashlib.sha1("\n".join(sorted(items)).encode()).hexdigest()[:12] if ready else ""
+    count = len(names)
+else:
+    key = s["ready_id"] if s.get("state") == "ready" else ""
+    names = []
+    # firmware updates count too: a set with only a firmware update said "0"
+    count = int(s.get("updates", 0) or 0) + len(s.get("firmware") or [])
+print(key)
+print(count)
+print(", ".join(n.split(":")[0] for n in names[:3]) + (", …" if len(names) > 3 else ""))
+PY
+)
+ready=$(printf '%s\n' "$info" | sed -n 1p)
+count=$(printf '%s\n' "$info" | sed -n 2p)
+names=$(printf '%s\n' "$info" | sed -n 3p)
+[ -n "$ready" ] || exit 0
+[ "$(cat "$seen" 2>/dev/null)" = "$ready" ] && exit 0
+mkdir -p "$(dirname "$seen")"
+echo "$ready" > "$seen"
+
+case "${LANG:-}" in
+    fr*) title="Mises à jour prêtes"
+         if [ "$count" = 1 ]; then
+             body="1 mise à jour téléchargée. Redémarrez maintenant pour l'installer."
+         else
+             body="$count mises à jour téléchargées. Redémarrez maintenant pour les installer."
+         fi
+         [ -n "$names" ] && body="$body
+Redémarrage requis : $names"
+         now="Redémarrer maintenant"; later="Plus tard" ;;
+    *)   title="Updates are ready"
+         if [ "$count" = 1 ]; then
+             body="1 update downloaded. Restart now to install it."
+         else
+             body="$count updates downloaded. Restart now to install them."
+         fi
+         [ -n "$names" ] && body="$body
+Restart required: $names"
+         now="Restart now"; later="Later" ;;
+esac
+
+answer=$(notify-send --app-name="Raye Update" --icon=system-software-update \
+    --action=restart="$now" --action=later="$later" --wait "$title" "$body")
+if [ "$answer" = restart ]; then
+    # arm, then let Plasma end the session so apps can save their work;
+    # logind is the way out when Plasma does not answer
+    if raye-update arm --then restart; then
+        busctl --user call org.kde.Shutdown /Shutdown org.kde.Shutdown logoutAndReboot ||
+            busctl call org.freedesktop.login1 /org/freedesktop/login1 \
+                org.freedesktop.login1.Manager Reboot b true
+    fi
+fi

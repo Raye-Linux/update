@@ -1,0 +1,27 @@
+[Unit]
+Description=Install updates
+Documentation=https://github.com/Raye-Linux/update
+# systemd offline updates: runs only when /system-update points at
+# /var/lib/raye-update/offline (raye-update arm), before anyone signs in
+DefaultDependencies=no
+Requires=sysinit.target dbus.socket
+Wants=local-fs.target
+After=sysinit.target dbus.socket local-fs.target systemd-journald.socket system-update-pre.target
+# the boot screen is up before the first word is sent to it
+After=plymouth-start.service
+Before=shutdown.target system-update.target
+ConditionPathIsSymbolicLink=/system-update
+# a crash must not leave the PC on a blank screen
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update install-offline
+# Plymouth shows the progress; apt's text goes to the journal only
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=3h
+
+[Install]
+WantedBy=system-update.target

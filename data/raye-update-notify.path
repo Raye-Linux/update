@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for updates that are ready
+
+[Path]
+PathChanged=/var/lib/raye-update/state.json
+
+[Install]
+WantedBy=default.target

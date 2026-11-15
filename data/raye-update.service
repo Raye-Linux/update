@@ -1,0 +1,14 @@
+[Unit]
+Description=Look for system updates and download them
+Documentation=https://github.com/Raye-Linux/update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update auto
+# never in the way of what you are doing
+Nice=10
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+TimeoutStartSec=2h

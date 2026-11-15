@@ -1,0 +1,12 @@
+{
+  "state": "ready",
+  "updates": 2,
+  "packages": [
+    "firefox",
+    "libc6"
+  ],
+  "reason": "",
+  "checked": 1793462520.5,
+  "ready_id": "1793462520-2",
+  "paused_until": 0.0
+}

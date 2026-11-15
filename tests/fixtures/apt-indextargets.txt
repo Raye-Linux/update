@@ -1,0 +1,29 @@
+Filename: /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_resolute_main_binary-amd64_Packages
+Created-By: Packages
+Identifier: Packages
+Repo-URI: http://archive.ubuntu.com/ubuntu/
+
+Filename: /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_resolute_universe_binary-amd64_Packages
+Created-By: Packages
+Identifier: Packages
+Repo-URI: http://archive.ubuntu.com/ubuntu/
+
+Filename: /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_resolute-security_main_binary-amd64_Packages
+Created-By: Packages
+Identifier: Packages
+Repo-URI: http://archive.ubuntu.com/ubuntu/
+
+Filename: /var/lib/apt/lists/security.ubuntu.com_ubuntu_dists_resolute-security_main_binary-amd64_Packages
+Created-By: Packages
+Identifier: Packages
+Repo-URI: http://security.ubuntu.com/ubuntu/
+
+Filename: /var/lib/apt/lists/_etc_apt_mirrors_raye.list_dists_resolute_main_binary-amd64_Packages
+Created-By: Packages
+Identifier: Packages
+Repo-URI: mirror+file:/etc/apt/mirrors/raye.list/
+
+Filename: /var/lib/apt/lists/_etc_apt_mirrors_raye.list_dists_resolute_main_i18n_Translation-en
+Created-By: Translations
+Identifier: Translations
+Repo-URI: mirror+file:/etc/apt/mirrors/raye.list/

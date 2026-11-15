@@ -1,0 +1,49 @@
+{
+  "Devices" : [
+    {
+      "Name" : "System Firmware",
+      "DeviceId" : "6a3c1f0e9b2d4c5a8e7f6d5c4b3a29181716151a",
+      "Guid" : [
+        "230c8b18-8d9b-53ec-838b-6cfc0383493a"
+      ],
+      "Plugin" : "uefi_capsule",
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot"
+      ],
+      "Vendor" : "Example",
+      "Version" : "1.07",
+      "Releases" : [
+        {
+          "AppstreamId" : "com.example.laptop.firmware",
+          "Version" : "1.09",
+          "Summary" : "Firmware for the Example laptop",
+          "Size" : 9437184,
+          "Checksum" : [
+            "46459466855a18912d4f8d05ab4d5d17aa68928b",
+            "1bf2dd354e35e86138478f17c83724be644e0dc4c2b82fa95a2cfc7ebfad13d5"
+          ],
+          "Locations" : [
+            "https://fwupd.org/downloads/1bf2dd354e35e86138478f17c83724be644e0dc4c2b82fa95a2cfc7ebfad13d5-Example-1.09.cab"
+          ],
+          "Flags" : [
+            "is-upgrade"
+          ]
+        },
+        {
+          "AppstreamId" : "com.example.laptop.firmware",
+          "Version" : "1.08",
+          "Summary" : "Firmware for the Example laptop",
+          "Size" : 9437184
+        }
+      ]
+    },
+    {
+      "Name" : "Touchpad",
+      "DeviceId" : "0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c",
+      "Version" : "2.0",
+      "Releases" : []
+    }
+  ]
+}

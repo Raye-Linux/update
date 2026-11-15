@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -Dm755 src/raye_update.py debian/raye-update/usr/libexec/raye-update
+
+override_dh_auto_test:
+	python3 -m pytest -q tests
+
+override_dh_installsystemd:
+	dh_installsystemd --name=raye-update raye-update.timer
+	dh_installsystemd --name=raye-update --no-enable --no-start raye-update.service
+	dh_installsystemd --name=raye-update-restart raye-update-restart.timer
+	dh_installsystemd --name=raye-update-restart --no-enable --no-start raye-update-restart.service
+	dh_installsystemd --name=raye-update-shutdown-screen --no-start raye-update-shutdown-screen.service
+	# runs only at start-up in system-update.target, never started by hand
+	# and never stopped by an upgrade of this package: that would kill the
+	# install it is part of
+	dh_installsystemd --name=raye-update-install --no-start --no-stop-on-upgrade raye-update-install.service
+
+override_dh_installsystemduser:
+	dh_installsystemduser --name=raye-update-notify
+	dh_installsystemduser --name=raye-update-progress raye-update-progress.path

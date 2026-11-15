@@ -1,0 +1,3 @@
+'http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/libc6_2.42-1ubuntu2_amd64.deb' libc6_2.42-1ubuntu2_amd64.deb 3260116 SHA512:1f0e
+'http://archive.ubuntu.com/ubuntu/pool/main/l/linux/linux-image-7.0.0-12-generic_7.0.0-12.12_amd64.deb' linux-image-7.0.0-12-generic_7.0.0-12.12_amd64.deb 15728640 SHA512:9a2b
+'https://packages.mozilla.org/apt/pool/main/f/firefox/firefox_141.0~build2_amd64.deb' firefox_141.0~build2_amd64.deb 72351744 SHA512:c3d4

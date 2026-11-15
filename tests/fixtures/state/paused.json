@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "phase": "paused",
+  "waitReason": "",
+  "pending": [],
+  "count": 0,
+  "downloadedBytes": 0,
+  "totalBytes": 0,
+  "needsRestart": false,
+  "readyId": "",
+  "pausedUntil": 1794672000,
+  "activeHours": {
+    "start": 8,
+    "end": 17
+  },
+  "autoRestart": false,
+  "armed": null,
+  "lastCheck": 1793462520,
+  "lastInstall": {
+    "time": 1793376000,
+    "count": 14,
+    "firmware": 0,
+    "ok": true
+  },
+  "kernelChange": false,
+  "firmware": [],
+  "error": null,
+  "installAttempts": 0,
+  "brokenSources": [],
+  "checkedEverything": true,
+  "state": "paused",
+  "updates": 0,
+  "packages": [],
+  "reason": "",
+  "checked": 1793462520,
+  "ready_id": "",
+  "paused_until": 1794672000,
+  "installPercent": 0
+}

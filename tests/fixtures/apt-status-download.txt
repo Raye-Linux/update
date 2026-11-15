@@ -1,0 +1,5 @@
+dlstatus:1:0.0000:Retrieving file 1 of 3
+dlstatus:1:4.0164:Retrieving file 1 of 3
+dlstatus:2:35.5000:Retrieving file 2 of 3
+dlstatus:3:80.2500:Retrieving file 3 of 3
+dlstatus:3:100.0000:Retrieving file 3 of 3

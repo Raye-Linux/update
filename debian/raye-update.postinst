@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+# An older notify or progress unit can be left failed by its start limit while
+# this very install rewrites the state: reload each running user manager and
+# start the watches again, or the "Updates are ready" notice would not come.
+if [ "$1" = configure ]; then
+    # debhelper reloads systemd before it enables raye-update-shutdown-screen:
+    # one more, or the restart right after this upgrade does not run it
+    if [ -d "${RAYE_SYSTEMD_RUN:-/run/systemd/system}" ]; then
+        systemctl --system daemon-reload >/dev/null 2>&1 || true
+    fi
+    runtime=${RAYE_USER_RUNTIME:-/run/user}
+    for dir in "$runtime"/*; do
+        [ -S "$dir/systemd/private" ] || continue
+        user=$(getent passwd "${dir##*/}" | cut -d: -f1)
+        [ -n "$user" ] || continue
+        timeout 10 systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || continue
+        timeout 10 systemctl --user -M "$user@" reset-failed \
+            raye-update-notify.path raye-update-notify.service \
+            raye-update-progress.path raye-update-progress.service >/dev/null 2>&1 || true
+        timeout 10 systemctl --user -M "$user@" restart \
+            raye-update-notify.path raye-update-progress.path >/dev/null 2>&1 || true
+    done
+fi
+
+exit 0

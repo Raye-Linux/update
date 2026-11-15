@@ -1,0 +1,11 @@
+# Capture reelle de `apt-get update` (apt 3.0.3), exit 100.
+# Le depot avait un fichier Release au dernier passage et n'en a plus.
+# Les adresses du banc ont ete renommees en adresses de production;
+# aucune ligne n'a ete ecrite a la main.
+Hit:1 http://archive.ubuntu.com/ubuntu resolute InRelease
+Get:2 file:/etc/apt/mirrors/raye.list Mirrorlist [34 B]
+Ign:3 https://raye-linux.github.io/packages resolute InRelease
+Err:4 https://raye-linux.github.io/packages resolute Release
+  404  File not found [IP: 127.0.0.1 8781]
+Reading package lists...
+E: The repository 'mirror+file:/etc/apt/mirrors/raye.list resolute Release' no longer has a Release file.

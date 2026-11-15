@@ -1,0 +1,12 @@
+# Capture reelle de `apt-get update` (apt 3.0.3), exit 100.
+# Le depot etait signe au dernier passage et ne l'est plus. Un repli de signature est une attaque possible, jamais une panne ordinaire.
+# Les adresses du banc ont ete renommees en adresses de production;
+# aucune ligne n'a ete ecrite a la main.
+Hit:1 http://archive.ubuntu.com/ubuntu resolute InRelease
+Get:2 file:/etc/apt/mirrors/raye.list Mirrorlist [34 B]
+Ign:3 https://raye-linux.github.io/packages resolute InRelease
+Get:4 https://raye-linux.github.io/packages resolute Release [942 B]
+Ign:5 https://raye-linux.github.io/packages resolute Release.gpg
+Ign:5 mirror+file:/etc/apt/mirrors/raye.list resolute Release.gpg
+Reading package lists...
+E: The repository 'mirror+file:/etc/apt/mirrors/raye.list resolute Release' is no longer signed.

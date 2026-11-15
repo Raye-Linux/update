@@ -1,0 +1,22 @@
+Source: raye-update
+Section: admin
+Priority: optional
+Maintainer: techoraye <190692880+techoraye@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13), dh-python, python3, python3-pytest
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/Raye-Linux/update.git
+
+Package: raye-update
+Architecture: all
+Depends: python3, apt, network-manager, libnotify-bin, polkitd, pkexec,
+         libglib2.0-bin, ${misc:Depends}
+Recommends: fwupd, plymouth
+Description: Raye Linux system updates
+ Looks for system and firmware updates in the background and downloads
+ them, waiting while on a low battery, a metered connection or during a
+ game. They are installed at the next start-up only after you pick
+ "Update and restart" or "Update and shut down", with the progress on the
+ boot screen and a snapshot taken right before, so nothing installs on
+ its own. Updates can be paused for up to five weeks, and the PC never
+ restarts on its own during your active hours.

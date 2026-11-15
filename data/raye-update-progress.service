@@ -1,0 +1,11 @@
+[Unit]
+Description=Show the update download on the taskbar
+PartOf=graphical-session.target
+After=graphical-session.target
+# state.json changes several times a second during an install; a start
+# limit here fails the path unit too
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/raye-update progress

@@ -1,0 +1,11 @@
+# Capture reelle de `apt-get update` (apt 3.0.3), exit 100.
+# La signature est bonne mais l'index n'offre que des sommes de controle faibles (MD5): apt refuse l'index pour raison de securite.
+# Les adresses du banc ont ete renommees en adresses de production;
+# aucune ligne n'a ete ecrite a la main.
+Get:1 http://archive.ubuntu.com/ubuntu resolute InRelease [1219 B]
+Get:2 file:/etc/apt/mirrors/raye.list Mirrorlist [34 B]
+Get:3 https://raye-linux.github.io/packages resolute InRelease [514 B]
+Get:4 http://archive.ubuntu.com/ubuntu resolute/main amd64 Packages [454 B]
+Reading package lists...
+W: No Hash entry in Release file /var/lib/apt/lists/partial/InRelease which is considered strong enough for security purposes
+E: The repository 'mirror+file:/etc/apt/mirrors/raye.list resolute InRelease' provides only weak security information.

@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# raye-update for a terminal: the status for anyone, everything else
+# as root through pkexec (no password for the administrators at the
+# computer, see org.raye.update).
+set -eu
+libexec=${RAYE_UPDATE_LIBEXEC:-/usr/libexec/raye-update}
+# archive-check only reads /etc: a check that asks for a password is a
+# check nobody runs, so it goes straight through like the status
+case "${1:-status}" in
+    status|progress|archive-check|-h|--help) exec "$libexec" "$@" ;;
+esac
+if [ "$(id -u)" -eq 0 ]; then
+    exec "$libexec" "$@"
+fi
+exec pkexec "$libexec" "$@"

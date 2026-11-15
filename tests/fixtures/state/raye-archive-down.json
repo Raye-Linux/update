@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "phase": "ready",
+  "waitReason": "",
+  "pending": [
+    {
+      "name": "libssl3",
+      "from": "3.5.1-1ubuntu2",
+      "to": "3.5.2-0ubuntu1.1",
+      "origin": "Ubuntu:26.04/resolute-security",
+      "kind": "security",
+      "restart": true
+    },
+    {
+      "name": "curl",
+      "from": "8.14.1-2",
+      "to": "8.14.2-1ubuntu0.1",
+      "origin": "Ubuntu:26.04/resolute-updates",
+      "kind": "system",
+      "restart": true
+    }
+  ],
+  "count": 2,
+  "downloadedBytes": 4194304,
+  "totalBytes": 4194304,
+  "needsRestart": true,
+  "readyId": "c71e0a4d93b2",
+  "pausedUntil": 0,
+  "activeHours": {
+    "start": 8,
+    "end": 17
+  },
+  "autoRestart": false,
+  "armed": null,
+  "lastCheck": 1793820900,
+  "lastInstall": {
+    "time": 1793390400,
+    "count": 9,
+    "firmware": 0,
+    "ok": true
+  },
+  "kernelChange": false,
+  "firmware": [],
+  "error": null,
+  "installAttempts": 0,
+  "brokenSources": [
+    {
+      "uri": "mirror+file:/etc/apt/mirrors/raye.list",
+      "problem": "offline"
+    }
+  ],
+  "checkedEverything": false,
+  "state": "ready",
+  "updates": 2,
+  "packages": [
+    "libssl3",
+    "curl"
+  ],
+  "reason": "",
+  "checked": 1793820900,
+  "ready_id": "c71e0a4d93b2",
+  "paused_until": 0,
+  "installPercent": 0
+}

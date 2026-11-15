@@ -1,0 +1,7 @@
+pmstatus:dpkg-exec:0.0000:Running dpkg
+pmstatus:libc6:amd64:12.5000:Preparing libc6:amd64 (amd64)
+pmstatus:libc6:amd64:25.0000:Unpacking libc6:amd64 (amd64)
+pmconffile:/etc/ld.so.conf:30.0000:'/etc/ld.so.conf.dpkg-old' '/etc/ld.so.conf' 1 1
+pmstatus:firefox:62.5000:Installing firefox (amd64)
+pmstatus:firefox:87.5000:Configuring firefox (amd64)
+pmstatus:dpkg-exec:100.0000:Running dpkg

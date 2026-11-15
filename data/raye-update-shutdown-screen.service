@@ -1,0 +1,17 @@
+[Unit]
+Description=Say that updates install at the next start
+Documentation=https://github.com/Raye-Linux/update
+# pulled in on the way down; "Restarting" alone looked like nothing was
+# happening until the update screen came up after the restart
+DefaultDependencies=no
+After=plymouth-reboot.service plymouth-poweroff.service plymouth-halt.service
+# else the restart can go ahead before the words reach the screen
+Before=systemd-reboot.service systemd-poweroff.service systemd-halt.service
+ConditionPathIsSymbolicLink=/system-update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update shutdown-screen
+
+[Install]
+WantedBy=reboot.target poweroff.target halt.target

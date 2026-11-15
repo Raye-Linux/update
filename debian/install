@@ -1,0 +1,16 @@
+src/raye-update usr/bin
+src/raye-update-notify usr/libexec
+data/raye-update.service usr/lib/systemd/system
+data/raye-update.timer usr/lib/systemd/system
+data/raye-update-install.service usr/lib/systemd/system
+data/raye-update-live@.service usr/lib/systemd/system
+data/raye-update-restart.service usr/lib/systemd/system
+data/raye-update-restart.timer usr/lib/systemd/system
+data/raye-update-shutdown-screen.service usr/lib/systemd/system
+data/raye-update-notify.path usr/lib/systemd/user
+data/raye-update-notify.service usr/lib/systemd/user
+data/raye-update-progress.path usr/lib/systemd/user
+data/raye-update-progress.service usr/lib/systemd/user
+data/50-raye-update.rules usr/share/polkit-1/rules.d
+data/org.raye.update.policy usr/share/polkit-1/actions
+docs/state.md usr/share/doc/raye-update

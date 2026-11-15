@@ -1,0 +1,109 @@
+raye-update (0.5.6~beta1) resolute; urgency=medium
+
+  * Downloaded packages are deleted once they are installed. Updates that
+    still wait for a restart keep theirs until then.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Sun, 15 Nov 2026 00:29:17 +0000
+
+raye-update (0.5.2~beta1) resolute; urgency=medium
+
+  * "Preparing updates" shows as soon as a restart that installs updates
+    begins, instead of "Restarting".
+  * A late percentage from apt no longer comes back on the boot screen
+    after the install, and the same number is sent only once.
+  * The taskbar progress watch no longer hits its start limit during an
+    install, and the upgrade starts it again if it had.
+  * The new shutdown screen unit counts from the first restart after the
+    upgrade.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Fri, 13 Nov 2026 20:46:35 +0000
+
+raye-update (0.5~beta1) resolute; urgency=medium
+
+  * Tell about a restart again when the same packages come in newer
+    versions.
+  * Suspend the TPM binding before secureboot-db writes the dbx at
+    start-up.
+  * Restart now arms the updates even while others install in use.
+  * A failed install in use waits for the restart instead of retrying
+    every 6 hours.
+  * Install now on a low battery says why it waits.
+  * raye-shell, raye-style, raye-polkit-agent and the Plasma, KWin and
+    Qt libraries wait for the restart; packages are classified by source
+    too.
+  * Each simulation and install in use gets its own apt pins file.
+  * Finish an interrupted dpkg before asking apt anything.
+  * Standard users are asked for a password every time.
+  * Clear "Installing updates" when the install in use is killed.
+  * The notification says "Restart now to install", since only that
+    button installs the updates.
+  * The 0.3 update removes WineHQ's packages once raye-wine is in, and
+    nothing else.
+  * The restart notice no longer gets lost when the install writes its
+    state many times in a row.
+  * When the 0.3 release downloaded the update, the WineHQ swap happens
+    at the next check instead of never.
+  * Updating from 0.3 shows "Updates are ready" too: the old notify
+    watch is reloaded and started again.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 12 Nov 2026 20:42:05 +0000
+
+raye-update (0.3~beta1) resolute; urgency=medium
+
+  * Updates that need no restart install right away, while you work.
+    Only the kernel, drivers, firmware and the desktop itself wait for a
+    restart, and each one says so.
+  * Firmware already up to date is no longer offered, and firmware that
+    needs the charger says so.
+  * The restart screen no longer stands still at 90 % while firmware
+    installs: updates count to 100 %, then firmware gets its own step
+    with the ring turning.
+  * The ring keeps turning into the restart after updates, without a
+    black screen in between.
+  * A pair of restore points is taken around each install at restart.
+  * Nothing is installed while another program is using dpkg.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Wed, 11 Nov 2026 13:00:18 +0000
+
+raye-update (0.2~beta1) resolute; urgency=medium
+
+  * Updates installed at restart need one restart, not two, unless the
+    kernel or the boot chain changed.
+  * The update screen keeps the system language.
+  * Updating raye-update itself no longer stops the install it is part of.
+  * Notices say "1 update" and "4 updates", not "update(s)", in both
+    languages.
+  * A Raye archive that is not published yet no longer throws away Ubuntu's
+    updates.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Sun, 08 Nov 2026 11:07:43 +0000
+
+raye-update (0.1~dev3) resolute; urgency=medium
+
+  * A place updates come from that cannot be read no longer stops the
+    others. Measured on apt 3.0.3: a name that does not resolve is a
+    warning and apt exits 0, while a missing index or a signature that
+    does not check is an error and apt exits 100 -- so a 404 on our own
+    archive used to stop every Ubuntu security update with it, and a PC
+    that reached nothing at all was told it was up to date. The list of
+    updates now comes from the simulation, which works on the indexes apt
+    does have; the repositories that failed are named in brokenSources,
+    with why; and when every one of them failed we say so instead of
+    claiming freshness.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Wed, 04 Nov 2026 09:40:00 -0500
+
+raye-update (0.1~dev2) resolute; urgency=medium
+
+  * raye-update pause N (1 to 5 weeks) and resume: nothing is checked or
+    downloaded meanwhile; security fixes keep coming through
+    unattended-upgrades. Allowed for the people who run the computer.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 29 Oct 2026 02:20:00 -0400
+
+raye-update (0.1~dev1) resolute; urgency=medium
+
+  * First version: background check and download, install on restart,
+    notification when ready.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Wed, 28 Oct 2026 21:30:00 -0400
