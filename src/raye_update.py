@@ -1531,6 +1531,11 @@ def _install_live(state, pins, offline, now):
     state.lastInstall = {"time": now if now is not None else time.time(), "count": done,
                          "firmware": 0, "ok": rc == 0}
     if rc == 0:
+        installed = {n.split(":", 1)[0] for n in live} - {p["name"].split(":", 1)[0] for p in left}
+        try:
+            relaunch_updated_apps(installed)
+        except Exception as e:     # never let this fail the install
+            log(f"raye-update: apps were not opened again: {e}")
         waiting = {p["name"].split(":", 1)[0] for p in left}
         if waiting:
             # what swaps out old packages is downloaded with them for the restart
@@ -1545,6 +1550,75 @@ def _install_live(state, pins, offline, now):
         state.phase, state.readyId, state.needsRestart = "idle", "", False
         state.totalBytes = state.downloadedBytes = 0
     return state
+
+
+# Raye's own apps that keep nothing unsaved: once updated in use, an open one
+# is closed and opened again, so the new version works at once instead of
+# after the next sign-in. Apps where a person writes (Notepad...) are never
+# closed: they could lose work.
+RELAUNCH = {
+    "raye-files": ("dolphin",),
+    "raye-settings": ("raye-settings", "systemsettings"),
+    "raye-store": ("raye-store", "plasma-discover"),
+    "raye-taskmanager": ("raye-taskmanager",),
+}
+
+
+def running_apps(updated, proc="/proc"):
+    """{(uid, program)} of the apps of RELAUNCH open in a person's session
+    whose package was just updated, with the pids to close."""
+    wanted = {exe for name in updated for exe in RELAUNCH.get(name.split(":", 1)[0], ())}
+    found = {}
+    if not wanted:
+        return found
+    try:
+        pids = [d for d in os.listdir(proc) if d.isdigit()]
+    except OSError:
+        return found
+    for pid in pids:
+        try:
+            uid = os.stat(os.path.join(proc, pid)).st_uid
+            exe = os.readlink(os.path.join(proc, pid, "exe"))
+        except OSError:
+            continue
+        # an updated binary still running reads "(deleted)" after its path
+        program = os.path.basename(exe.removesuffix(" (deleted)"))
+        if uid >= 1000 and program in wanted:
+            found.setdefault((uid, program), []).append(int(pid))
+    return found
+
+
+def relaunch_updated_apps(updated, proc="/proc", kill=os.kill, runner=None,
+                          alive=None, sleep=time.sleep, user_of=None):
+    """Close the updated Raye apps that are open and open them again in the
+    same session. Returns what was opened again, as (user, program)."""
+    runner = runner or run
+    alive = alive or (lambda pid: os.path.exists(os.path.join(proc, str(pid))))
+    if user_of is None:
+        import pwd
+        user_of = lambda uid: pwd.getpwuid(uid).pw_name
+    done = []
+    for (uid, program), pids in sorted(running_apps(updated, proc).items()):
+        for pid in pids:
+            try:
+                kill(pid, 15)
+            except OSError:
+                pass
+        for _ in range(50):
+            if not any(alive(pid) for pid in pids):
+                break
+            sleep(0.1)
+        try:
+            user = user_of(uid)
+        except KeyError:
+            continue
+        rc, _, err = runner(["systemd-run", f"--machine={user}@.host", "--user", "--collect",
+                             "--quiet", "--", f"/usr/bin/{program}"], timeout=30)
+        if rc == 0:
+            done.append((user, program))
+        else:
+            log(f"raye-update: could not open {program} again for {user}: {err[-200:]}")
+    return done
 
 
 def start_live(asked=False):

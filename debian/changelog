@@ -1,3 +1,12 @@
+raye-update (0.5.7~beta1) resolute; urgency=medium
+
+  * After updates install in use, the open Raye apps that were updated
+    (File Explorer, Settings, Store, Task Manager) close and open again,
+    so the new version works at once. Apps where people write are never
+    closed.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Mon, 16 Nov 2026 00:23:45 +0000
+
 raye-update (0.5.6~beta1) resolute; urgency=medium
 
   * Downloaded packages are deleted once they are installed. Updates that
