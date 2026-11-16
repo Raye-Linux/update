@@ -1,3 +1,10 @@
+raye-update (0.5.8~beta1) resolute; urgency=medium
+
+  * Updates that waited for the charger install as soon as it is plugged
+    in, without a manual check.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Mon, 16 Nov 2026 13:06:42 +0000
+
 raye-update (0.5.7~beta1) resolute; urgency=medium
 
   * After updates install in use, the open Raye apps that were updated

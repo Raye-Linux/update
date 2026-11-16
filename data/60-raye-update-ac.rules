@@ -1,0 +1,3 @@
+# Updates that waited for the charger install as soon as it is plugged in,
+# instead of at the next check. Nothing waits: the unit sees it and stops.
+ACTION=="change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains|USB", ATTR{online}=="1", RUN+="/usr/bin/systemctl --no-block start raye-update-live@auto.service"
