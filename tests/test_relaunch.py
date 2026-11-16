@@ -45,3 +45,24 @@ def test_nothing_updated_from_the_list_touches_nothing(tmp_path):
 
 def test_a_missing_proc_does_not_fail(tmp_path):
     assert ru.running_apps({"raye-files"}, proc=str(tmp_path / "nothing")) == {}
+
+
+def test_settings_reopens_on_the_update_page(tmp_path):
+    # closed for its own update, Settings comes back where the person was
+    # watching it: on Raye Update, not on the home page (looks like a bug)
+    proc = fake_proc(tmp_path, {301: (1000, "/usr/bin/raye-settings")})
+    if os.geteuid() != 0:
+        return  # owners can only be set as root (the build runs as root)
+    ran = []
+    ru.relaunch_updated_apps(
+        {"raye-settings"}, proc=proc, kill=lambda pid, sig: None,
+        runner=lambda cmd, timeout=0: (ran.append(cmd), (0, "", ""))[1],
+        alive=lambda pid: False, sleep=lambda s: None,
+        user_of=lambda uid: "anna")
+    assert ran[0][-3:] == ["/usr/bin/raye-settings", "--page", "update"]
+
+
+def test_only_raye_settings_gets_a_page():
+    assert ru.relaunch_command("raye-settings") == ["/usr/bin/raye-settings", "--page", "update"]
+    assert ru.relaunch_command("dolphin") == ["/usr/bin/dolphin"]
+    assert ru.relaunch_command("systemsettings") == ["/usr/bin/systemsettings"]

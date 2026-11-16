@@ -1563,6 +1563,14 @@ RELAUNCH = {
     "raye-taskmanager": ("raye-taskmanager",),
 }
 
+# what an app opens on when it comes back: Settings was closed while the
+# person watched Raye Update, so it reopens there
+RELAUNCH_ARGS = {"raye-settings": ("--page", "update")}
+
+
+def relaunch_command(program):
+    return [f"/usr/bin/{program}", *RELAUNCH_ARGS.get(program, ())]
+
 
 def running_apps(updated, proc="/proc"):
     """{(uid, program)} of the apps of RELAUNCH open in a person's session
@@ -1613,7 +1621,7 @@ def relaunch_updated_apps(updated, proc="/proc", kill=os.kill, runner=None,
         except KeyError:
             continue
         rc, _, err = runner(["systemd-run", f"--machine={user}@.host", "--user", "--collect",
-                             "--quiet", "--", f"/usr/bin/{program}"], timeout=30)
+                             "--quiet", "--", *relaunch_command(program)], timeout=30)
         if rc == 0:
             done.append((user, program))
         else:
