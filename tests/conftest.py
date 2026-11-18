@@ -11,6 +11,12 @@ import raye_update as ru  # noqa: E402
 FIXTURES = os.path.join(HERE, "fixtures")
 
 
+@pytest.fixture(autouse=True)
+def quiet_check(monkeypatch):
+    """apt-get update goes through run() in the tests, like every other apt call."""
+    monkeypatch.setattr(ru, "CHECK_PROGRESS", False)
+
+
 def fixture(name):
     with open(os.path.join(FIXTURES, name)) as f:
         return f.read()

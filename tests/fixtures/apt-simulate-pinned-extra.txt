@@ -1,0 +1,18 @@
+NOTE: This is only a simulation!
+      apt-get needs root privileges for real execution.
+      Keep also in mind that locking is deactivated,
+      so don't depend on the relevance to the real current situation!
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following packages have been kept back:
+  libc6 linux-generic nvidia-driver-580
+The following packages will be upgraded:
+  firefox kate libgl1:i386
+3 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.
+Inst firefox [1:140.0~build1] (1:141.0~build2 mozilla:mozilla [amd64])
+Inst libgl1:i386 [1.7.0-1] (1.7.0-2 Ubuntu:26.04/resolute-updates [i386])
+Inst kate [4:25.08.3-0ubuntu1] (4:25.08.3-0ubuntu2 Ubuntu:26.04/resolute-updates [amd64])
+Conf firefox (1:141.0~build2 mozilla:mozilla [amd64])
+Conf libgl1:i386 (1.7.0-2 Ubuntu:26.04/resolute-updates [i386])

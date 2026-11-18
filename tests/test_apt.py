@@ -107,9 +107,10 @@ class FakeTools:
     """Answers run() like apt-get and fwupdmgr would, from fixtures."""
 
     def __init__(self, simulate="apt-simulate.txt", uris="apt-print-uris.txt", update_rc=0,
-                 update_err="", firmware=None):
+                 update_err="", firmware=None, cached=None):
         self.simulate, self.uris, self.update_rc, self.update_err = simulate, uris, update_rc, update_err
         self.firmware = firmware
+        self.cached = cached        # what the downloaded files can install
         self.calls = []
 
     def run(self, cmd, timeout=3600):
@@ -117,6 +118,8 @@ class FakeTools:
         if cmd[:2] == ["apt-get", "update"]:
             return self.update_rc, "", self.update_err
         if cmd[:2] == ["apt-get", "-s"]:
+            if "--no-download" in cmd and self.cached:
+                return 0, fixture(self.cached), ""
             return 0, fixture(self.simulate), ""
         if cmd[:2] == ["apt-get", "--print-uris"]:
             return 0, fixture(self.uris) if self.uris else "", ""
@@ -221,7 +224,8 @@ def test_download_refuses_without_room(paths, monkeypatch, machine):
 
 
 def test_download_failure_is_classified(paths, monkeypatch, machine):
-    monkeypatch.setattr(ru, "run", FakeTools().run)
+    # nothing arrived: the cache cannot install anything
+    monkeypatch.setattr(ru, "run", FakeTools(cached="apt-simulate-none.txt").run)
     monkeypatch.setattr(ru, "run_with_status",
                         lambda cmd, cb: (100, "E: Failed to fetch https://packages.mozilla.org/x 503 "))
     st = ru.download(ru.check(ru.State()))

@@ -79,7 +79,7 @@ def downloaded(apt):
     ("libqt6core6t64", True), ("qml6-module-qtquick", True), ("libkf6kiocore6", True),
     ("plasma-workspace", True), ("kwin-wayland", True), ("libgl1-mesa-dri", True),
     ("mesa-vulkan-drivers", True), ("raye-theme", True),
-    ("raye-shell", True), ("raye-style", True), ("raye-polkit-agent", True),
+    ("raye-shell", True), ("raye-style", True), ("raye-polkit-agent", False),
     ("xdg-desktop-portal-raye", True), ("libtaskmanager6", True),
     ("libnotificationmanager1", True), ("libkworkspace6-6", True), ("libkpipewire6", True),
     ("liblayershellqtinterface6", True), ("libkwaylandclient6", True),
@@ -171,7 +171,8 @@ def test_install_in_use_leaves_only_what_needs_a_restart(apt):
     assert (st.phase, st.needsRestart, st.count) == ("ready", True, 5)
     assert "firefox" not in restart_of(st) and all(restart_of(st).values())
     assert st.readyId == ru.ready_key(st.pending, [])
-    assert st.lastInstall == {"time": 900.0, "count": 2, "firmware": 0, "ok": True}
+    assert st.lastInstall == {"time": 900.0, "count": 2, "firmware": 0, "ok": True,
+                              "packages": ["firefox", "libgl1:i386"]}
     assert ru.validate(ru.to_json(st)) == []
 
 

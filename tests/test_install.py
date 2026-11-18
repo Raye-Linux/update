@@ -110,6 +110,7 @@ def offline(paths, no_tools, monkeypatch):
         return rec.get("apt_ok", True), "dpkg: error processing firefox"
     monkeypatch.setattr(ru, "install_packages", fake_install)
     monkeypatch.setattr(ru, "remove_obsolete", lambda: False)   # test_obsolete.py
+    monkeypatch.setattr(ru, "still_pending", lambda pending: [])   # test_held.py
     monkeypatch.setattr(ru, "dpkg_half_configured", lambda: rec["dpkg_broken"][0])
     monkeypatch.setattr(ru, "install_firmware",
                         lambda fw: rec["fw"].append(len(fw)) or rec.get("fw_ok", True))

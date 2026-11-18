@@ -73,5 +73,8 @@
   "checked": 1793462520,
   "ready_id": "5f0c2a9e41b7",
   "paused_until": 0,
-  "installPercent": 0
+  "installPercent": 0,
+  "checkPercent": 0,
+  "bytesPerSecond": 0,
+  "secondsLeft": 0
 }

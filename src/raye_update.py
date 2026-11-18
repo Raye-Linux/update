@@ -77,20 +77,23 @@ RESTART_PACKAGES = re.compile(r"^(linux-(image|modules|signed)|raye-kernel|shim-
 # loaded and microcode; libc (old processes load new NSS modules), pid 1
 # and the bus a session cannot outlive; and the desktop itself: Qt, KDE
 # Frameworks, Plasma and KWin load plugins long after they started, and
-# the compositor keeps the graphics driver it started with.
+# the compositor keeps the graphics driver it started with. Not on it: a GRUB
+# theme (read at the next start only), Raye's own QML modules (loaded by
+# apps, never by the shell) and the admin prompt (a user service, started
+# again after its update, see USER_UNITS).
 OFFLINE_PACKAGES = re.compile(
-    r"^(linux-(image|modules|signed|generic|lowlatency|virtual|firmware)|shim-|grub-|grub2-|"
+    r"^(linux-(image|modules|signed|generic|lowlatency|virtual|firmware)|shim-|grub-(?!theme-)|grub2-|"
     r"nvidia-|libnvidia-|.*-dkms$|intel-microcode$|amd64-microcode$|firmware-|"
     r"libc6(-i386)?$|libc-bin$|systemd$|systemd-sysv$|libsystemd0$|libsystemd-shared$|"
     r"udev$|libudev1$|dbus|libdbus-1|"
-    r"libqt6|qt6-|qml6-module-|libkf6|kf6-|kio6?$|kded6|kglobalacceld|kactivitymanagerd|"
+    r"libqt6|qt6-|qml6-module-(?!org-raye-)|libkf6|kf6-|kio6?$|kded6|kglobalacceld|kactivitymanagerd|"
     r"plasma-|libplasma|kwin|libkwin|kscreen|libkscreen|kscreenlocker|libkdecorations|"
     r"layer-shell-qt|powerdevil|polkit-kde|xdg-desktop-portal-kde|kde-style-|breeze$|sddm|"
     r"mesa-|libgl1-mesa|libegl-mesa|libglx-mesa|libgbm1|libgallium|libdrm|xwayland$|"
     r"libtaskmanager|libnotificationmanager|libkworkspace|libklookandfeel|libkmpris|"
     r"libbatterycontrol|libklipper|libkpipewire|liblayershellqt|libkwayland|libpowerdevil|"
     r"libkglobalacceld|libksysguard|libksgrd|libprocess(core|ui)|milou$|libinput10$|"
-    r"raye-theme$|raye-shell$|raye-style$|raye-polkit-agent$|xdg-desktop-portal-raye$)")
+    r"raye-theme$|raye-shell$|raye-style$|xdg-desktop-portal-raye$)")
 # The same, by source package: a library Ubuntu splits out of Plasma or
 # KWin next year has a name nobody listed above, and the session loads it
 # all the same.
@@ -118,6 +121,9 @@ SPARE_BYTES = 1 << 30         # free space kept on top of what apt needs
 PHASES = ("idle", "checking", "waiting", "downloading", "ready", "armed",
           "installing", "paused", "error")
 WAIT_REASONS = ("", "game", "metered", "battery", "busy")
+NATIVE_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}.get(os.uname().machine, os.uname().machine)
+# where one update is while updates install in use
+PACKAGE_STATES = ("queued", "installing", "installed", "failed")
 KINDS = ("kernel", "driver", "security", "app", "system")
 ERROR_CODES = ("no-internet", "server", "no-space", "broken", "install-failed",
                "firmware-failed", "unknown")
@@ -127,9 +133,17 @@ SOURCE_PROBLEMS = ("offline", "missing", "unsigned", "invalid", "unknown")
 
 APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none",
            "NEEDRESTART_SUSPEND": "1", "LC_ALL": "C.UTF-8"}
+# Ubuntu hands a phased update to a share of the machines, more each day,
+# and draws each source package on its own: a Plasma point release would
+# land a few packages at a time over a week. Raye takes it once Ubuntu gives
+# it to everyone, all of it at once.
+PHASING = ["-o", "APT::Get::Never-Include-Phased-Updates=true"]
 APT_OPTS = ["-q", "-o", "DPkg::Lock::Timeout=120",
             "-o", "Dpkg::Options::=--force-confdef",
-            "-o", "Dpkg::Options::=--force-confold"]
+            "-o", "Dpkg::Options::=--force-confold", *PHASING]
+# installs only take what is downloaded: a package that turned up since, or
+# whose file is missing, waits for the next round instead of failing them
+FROM_CACHE = ["--no-download", "--fix-missing"]
 # never removes a package: new dependencies (a new kernel ABI) come in,
 # anything that would need a removal waits for a person to decide
 UPGRADE = ["upgrade", "--with-new-pkgs"]
@@ -168,6 +182,9 @@ class State:
     installAttempts: int = 0
     brokenSources: list = field(default_factory=list)   # [{"uri", "problem"}]
     installPercent: int = 0       # while updates install in use
+    checkPercent: int = 0         # while the lists of updates are read
+    bytesPerSecond: int = 0       # while downloading
+    secondsLeft: int = 0          # while downloading, 0 when it cannot be told
 
 
 # --- the state file ---------------------------------------------------------
@@ -284,6 +301,8 @@ def validate(d):
                 bad.append("pending: unknown kind")
             elif "restart" in p and not _is(p["restart"], bool):
                 bad.append("pending: bad restart")
+            elif "state" in p and p["state"] not in PACKAGE_STATES:
+                bad.append("pending: unknown state")
     for key in ("count", "downloadedBytes", "totalBytes", "installAttempts"):
         if want(key, int) and d[key] < 0:
             bad.append(f"{key}: negative")
@@ -334,6 +353,12 @@ def validate(d):
     if "installPercent" in d and (not _is(d["installPercent"], int)
                                   or not 0 <= d["installPercent"] <= 100):
         bad.append("installPercent: bad value")
+    # progress keys, added in 0.6: optional
+    if "checkPercent" in d and (not _is(d["checkPercent"], int) or not 0 <= d["checkPercent"] <= 100):
+        bad.append("checkPercent: bad value")
+    for key in ("bytesPerSecond", "secondsLeft"):
+        if key in d and (not _is(d[key], int) or d[key] < 0):
+            bad.append(f"{key}: bad value")
     if "checkedEverything" in d and not _is(d["checkedEverything"], bool):
         bad.append("checkedEverything: wrong type")
     if "error" not in d:
@@ -889,9 +914,10 @@ def run(cmd, timeout=3600):
     return p.returncode, p.stdout, p.stderr
 
 
-def run_with_status(cmd, on_status, timeout=7200):
+def run_with_status(cmd, on_status, timeout=7200, keep=40):
     """Run an apt command with APT::Status-Fd on a pipe; on_status(kind, item, percent, msg)
-    for every status line. Returns (returncode, output tail)."""
+    for every status line. Returns (returncode, the last `keep` lines of output,
+    all of it with keep=None)."""
     r, w = os.pipe()
     full = cmd[:1] + ["-o", f"APT::Status-Fd={w}"] + cmd[1:]
     try:
@@ -911,7 +937,8 @@ def run_with_status(cmd, on_status, timeout=7200):
     def drain():
         for raw in p.stdout:
             tail.append(raw.decode(errors="replace"))
-            del tail[:-40]
+            if keep:
+                del tail[:-keep]
 
     def follow():
         # a daemon started by a maintainer script may keep the pipe open,
@@ -956,7 +983,24 @@ def power(then):
 
 # --- check and download -----------------------------------------------------
 
-def list_updates():
+def update_lists(on_percent=None):
+    """apt-get update: (returncode, stdout, stderr). With on_percent, the
+    percentage apt reports goes to it as the lists come in."""
+    cmd = ["apt-get", "update", *APT_OPTS]
+    if on_percent is None:
+        return run(cmd)
+    done = [0]
+
+    def on_status(kind, item, percent, msg):
+        # apt counts files it learns about as it goes: never go back
+        if kind == "dlstatus" and int(percent) > done[0]:
+            done[0] = min(100, int(percent))
+            on_percent(done[0])
+    rc, out = run_with_status(cmd, on_status, timeout=3600, keep=None)
+    return rc, out, ""
+
+
+def list_updates(on_percent=None):
     """(pending, broken sources, error text or "").
 
     `pending` is None when nothing could be worked out; `broken` is None when
@@ -971,7 +1015,7 @@ def list_updates():
     repository failed we know nothing, and saying "up to date" to a machine
     that reached nothing is worse than saying nothing at all.
     """
-    rc, out, err = run(["apt-get", "update", *APT_OPTS])
+    rc, out, err = update_lists(on_percent)
     text = (out or "") + "\n" + (err or "")
     if rc != 0 and is_lock_error(text):
         return None, None, err or out        # another install: simply come back later
@@ -1108,8 +1152,54 @@ def swap_left_over(swap=True):
 
 
 def bytes_to_download():
-    rc, out, _ = run(["apt-get", "--print-uris", "-qq", *UPGRADE])
+    # the same options as the simulation: a phased update counted here and
+    # left out there would be "still to download" forever
+    rc, out, _ = run(["apt-get", "--print-uris", *APT_OPTS, "-qq", *UPGRADE])
     return parse_print_uris(out) if rc == 0 else 0
+
+
+def cached_set(pending):
+    """The entries of `pending` apt can install from what is downloaded,
+    None when apt cannot say."""
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *UPGRADE])
+    if rc != 0:
+        return None
+    have = {(p["name"], p["to"]) for p in parse_simulation(out)}
+    return [p for p in pending if (p["name"], p["to"]) in have]
+
+
+clock = time.monotonic
+
+
+class SpeedMeter:
+    """Download speed and time left, written into the state as it goes.
+    Averaged, so one slow second does not make the time left jump."""
+
+    WINDOW = 1.0
+
+    def __init__(self, state):
+        self.state = state
+        self.mark = None        # (time, bytes) of the last measure
+        self.speed = 0.0
+
+    def update(self, done):
+        now = clock()
+        if self.mark is None:
+            self.mark = (now, done)
+            return
+        elapsed = now - self.mark[0]
+        if elapsed < self.WINDOW:
+            return
+        rate = max(0, done - self.mark[1]) / elapsed
+        self.speed = rate if not self.speed else 0.5 * self.speed + 0.5 * rate
+        self.mark = (now, done)
+        left = max(0, self.state.totalBytes - done)
+        self.state.bytesPerSecond = int(self.speed)
+        # a stalled download has no honest time left
+        self.state.secondsLeft = int(round(left / self.speed)) if self.speed >= 1 else 0
+
+    def stop(self):
+        self.state.bytesPerSecond = self.state.secondsLeft = 0
 
 
 def parse_fwupd(text):
@@ -1227,10 +1317,34 @@ def list_firmware():
     return parse_fwupd(out) if rc == 0 else []   # 2: nothing to do
 
 
+def settle(state, pending, firmware, cached=False):
+    """Mark which updates wait for the restart. An install in use that
+    already failed on this very set leaves all of it for the restart: no new
+    try, and no new pair of restore points. Returns the key of the set."""
+    mark_restart(pending, cached)
+    key = ready_key(pending, firmware)
+    if key and key == (state.lastInstall or {}).get("restartSet"):
+        for p in pending:
+            p["restart"] = True
+    return key
+
+
+# the check says how far it got while it reads the lists (off in the tests,
+# where apt is a fake that knows nothing of a status pipe)
+CHECK_PROGRESS = True
+
+
 def check(state, now=None):
     state.phase, state.waitReason, state.error = "checking", "", None
+    state.checkPercent = 0
     save_run(state)
-    pending, broken, err = list_updates()
+    def show(pct):
+        state.checkPercent = pct
+        save_run(state)
+    try:
+        pending, broken, err = list_updates(show if CHECK_PROGRESS else None)
+    finally:
+        state.checkPercent = 0
     if pending is None and not is_lock_error(err) and dpkg_half_configured():
         # an install cut short (power loss): finish it, then ask apt again
         repair_dpkg()
@@ -1252,16 +1366,15 @@ def check(state, now=None):
             set_error(state, classify_error(err), err)
         return state
     firmware = list_firmware()
-    mark_restart(pending)
-    key = ready_key(pending, firmware)
-    if key and key == (state.lastInstall or {}).get("restartSet"):
-        # an install in use already failed on this very set: no new try,
-        # and no new pair of restore points, until the restart
-        for p in pending:
-            p["restart"] = True
+    key = settle(state, pending, firmware)
+    if not key:
+        state.totalBytes = state.downloadedBytes = 0
     if key != state.readyId:
         state.readyId, state.needsRestart = "", False
         state.downloadedBytes = 0
+        # the size is known before anything downloads, so a set that waits
+        # (metered network, battery) can already say how big it is
+        state.totalBytes = bytes_to_download() if pending else 0
     state.pending, state.count, state.firmware = pending, len(pending), firmware
     if state.readyId:
         state.needsRestart = restart_left(state)
@@ -1293,21 +1406,22 @@ def download(state, gaming=None):
         state.phase, state.waitReason = "downloading", ""
         save_run(state)
         last = [0.0, 0.0]
+        meter = SpeedMeter(state)
 
         def on_status(kind, item, percent, msg):
             if kind != "dlstatus":
                 return
             state.downloadedBytes = min(total, int(total * percent / 100))
-            now = time.monotonic()
+            meter.update(state.downloadedBytes)
+            now = clock()
             if percent - last[0] >= 2 or now - last[1] >= 2:   # do not flood the readers
                 last[0], last[1] = percent, now
                 save_run(state)
-        rc, out = run_with_status(["apt-get", *APT_OPTS, "-y", "-d", *UPGRADE], on_status)
-        if rc != 0:
-            if is_lock_error(out):
-                state.phase, state.waitReason = "waiting", "busy"
-            else:
-                set_error(state, classify_error(out), out)
+        try:
+            rc, out = run_with_status(["apt-get", *APT_OPTS, "-y", "-d", *UPGRADE], on_status)
+        finally:
+            meter.stop()
+        if rc != 0 and not keep_what_arrived(state, out):
             return state
         state.downloadedBytes = total
     swap = obsolete_plan({p["name"].split(":", 1)[0] for p in state.pending})
@@ -1318,9 +1432,32 @@ def download(state, gaming=None):
         # the packages are ready; the firmware is tried again at the next check
         log("raye-update: a firmware update could not be downloaded")
     state.phase, state.waitReason, state.error = "ready", "", None
-    state.readyId = key
+    state.readyId = ready_key(state.pending, state.firmware)
     state.needsRestart = restart_left(state)
     return state
+
+
+def keep_what_arrived(state, out):
+    """After a download that failed: True when what did arrive makes a set
+    to install, which then becomes the pending set. A file the mirror does not
+    have yet (a 404 while it syncs, a version replaced since the lists were
+    read) must not keep back everything else, nor show an error. The rest is
+    found again at the next check. False when the state now says why not."""
+    if is_lock_error(out):
+        state.phase, state.waitReason = "waiting", "busy"
+        return False
+    code = classify_error(out)
+    have = None if code == "no-space" else cached_set(state.pending)
+    if not have:
+        set_error(state, code, out)
+        return False
+    missed = [p["name"] for p in state.pending if p not in have]
+    log(f"raye-update: {len(missed)} updates did not download, they are tried again later: "
+        + ", ".join(missed[:12]) + (f" ({out.strip().splitlines()[-1][-200:]})" if out.strip() else ""))
+    state.pending, state.count = have, len(have)
+    settle(state, have, state.firmware, cached=True)
+    state.kernelChange = any(p["kind"] == "kernel" for p in have)
+    return True
 
 
 # --- installing while the PC is in use ----------------------------------------
@@ -1399,10 +1536,11 @@ def pins_file(pending, offline):
             pass
 
 
-def live_set(pending, pins=None, offline=None):
+def live_set(pending, pins=None, offline=None, cached=False):
     """Names of the pending updates that can install now, without a
     restart: what apt upgrades once everything that needs one is pinned.
-    Empty when that cannot be worked out."""
+    Empty when that cannot be worked out. `cached`: only from what is
+    downloaded, as the install itself does; a check plans with everything."""
     if offline is None:
         offline = offline_names(pending)
     if all(p["name"] in offline for p in pending):
@@ -1410,10 +1548,10 @@ def live_set(pending, pins=None, offline=None):
     if pins is None:
         try:
             with pins_file(pending, offline) as own:
-                return live_set(pending, own, offline)
+                return live_set(pending, own, offline, cached)
         except OSError:
             return set()
-    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *pins, *UPGRADE])
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *pins, *(FROM_CACHE if cached else ()), *UPGRADE])
     if rc != 0 or re.search(r"^Remv ", out, re.M):
         return set()
     sim = parse_simulation(out)
@@ -1425,8 +1563,8 @@ def live_set(pending, pins=None, offline=None):
     return {p["name"] for p in sim}
 
 
-def mark_restart(pending):
-    live = live_set(pending)
+def mark_restart(pending, cached=False):
+    live = live_set(pending, cached=cached)
     for p in pending:
         p["restart"] = p["name"] not in live
     return pending
@@ -1489,38 +1627,72 @@ def install_live(state, asked=False, gaming=None, now=None):
         return _install_live(state, pins, offline, now)
 
 
+def clear_marks(state):
+    """The per-update steps belong to one install in use, never to a set at rest."""
+    for p in state.pending:
+        p.pop("state", None)
+
+
+def _entry_of(pending, item):
+    """The pending entry apt names in a status line. apt adds the native
+    architecture ("firefox:amd64") where the simulation did not ("firefox");
+    a foreign one is named the same way in both ("libgl1:i386")."""
+    base, _, arch = item.partition(":")
+    exact = [p for p in pending if p["name"] == item]
+    native = [p for p in pending if p["name"] == base] if arch in ("", NATIVE_ARCH) else []
+    return (exact or native or [None])[0]
+
+
 def _install_live(state, pins, offline, now):
-    live = live_set(state.pending, pins, offline)
+    live = live_set(state.pending, pins, offline, cached=True)
     if not live:
-        mark_restart(state.pending)
+        mark_restart(state.pending, cached=True)
         state.needsRestart = restart_left(state)
         return state
     state.phase, state.installPercent = "installing", 0
+    for p in state.pending:
+        if p["name"] in live:
+            p["state"] = "queued"
     save_run(state)
     point = restore_point_before(now)
-    last = [0]
+    last = [0, 0.0]
 
     def on_status(kind, item, percent, msg):
-        if kind == "pmstatus" and int(percent) - last[0] >= 2:
-            last[0] = state.installPercent = min(100, int(percent))
+        entry = _entry_of(state.pending, item) if kind in ("pmstatus", "pmerror") else None
+        moved = False
+        if entry is not None and "state" in entry:
+            new = "failed" if kind == "pmerror" else \
+                "installed" if msg.startswith("Installed ") else "installing"
+            if entry["state"] != new and entry["state"] not in ("installed", "failed"):
+                entry["state"], moved = new, True
+        if kind == "pmstatus":
+            state.installPercent = max(state.installPercent, min(100, int(percent)))
+        # do not flood the readers; a package that is done is always told
+        done = moved and entry["state"] in ("installed", "failed")
+        if done or ((moved or state.installPercent - last[0] >= 2) and clock() - last[1] >= 0.1):
+            last[0], last[1] = state.installPercent, clock()
             save_run(state)
     if point:
         APT_ENV["DISABLE_APT_SNAPSHOT"] = "yes"
     try:
-        rc, out = run_with_status(["apt-get", *APT_OPTS, *pins, "-y", "--no-download",
+        rc, out = run_with_status(["apt-get", *APT_OPTS, *pins, "-y", *FROM_CACHE,
                                    *UPGRADE], on_status)
     finally:
         APT_ENV.pop("DISABLE_APT_SNAPSHOT", None)
     if rc != 0 and is_lock_error(out):
         # another install holds dpkg: nothing changed, try again next time
         restore_point_after(point)
+        clear_marks(state)
         state.phase, state.installPercent = "ready", 0
         return state
     if rc != 0:
         log(f"raye-update: updates could not install in use, they wait for a restart: {out[-400:]}")
         repair_dpkg()
     restore_point_after(point)
-    rc_sim, sim, _ = run(["apt-get", "-s", *APT_OPTS, *UPGRADE])
+    clear_marks(state)
+    # what the cache can still install: the restart takes it. What turned up
+    # since the download is not part of it; the next check finds it.
+    rc_sim, sim, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *UPGRADE])
     left = parse_simulation(sim) if rc_sim == 0 else [p for p in state.pending if p["name"] not in live]
     for p in left:
         p["restart"] = True     # the next start-up installs all of it
@@ -1528,14 +1700,19 @@ def _install_live(state, pins, offline, now):
     state.pending, state.count = left, len(left)
     state.kernelChange = any(p["kind"] == "kernel" for p in left)
     state.installPercent = 0
+    gone = sorted(n for n in live if n not in {p["name"] for p in left})
     state.lastInstall = {"time": now if now is not None else time.time(), "count": done,
-                         "firmware": 0, "ok": rc == 0}
+                         "firmware": 0, "ok": rc == 0, "packages": gone}
     if rc == 0:
-        installed = {n.split(":", 1)[0] for n in live} - {p["name"].split(":", 1)[0] for p in left}
+        installed = {n.split(":", 1)[0] for n in gone}
         try:
             relaunch_updated_apps(installed)
         except Exception as e:     # never let this fail the install
             log(f"raye-update: apps were not opened again: {e}")
+        try:
+            restart_user_units(installed)
+        except Exception as e:
+            log(f"raye-update: services were not started again: {e}")
         waiting = {p["name"].split(":", 1)[0] for p in left}
         if waiting:
             # what swaps out old packages is downloaded with them for the restart
@@ -1559,6 +1736,8 @@ def _install_live(state, pins, offline, now):
 RELAUNCH = {
     "raye-files": ("dolphin",),
     "raye-settings": ("raye-settings", "systemsettings"),
+    # the account pages of Settings import it
+    "qml6-module-org-raye-account": ("raye-settings", "systemsettings"),
     "raye-store": ("raye-store", "plasma-discover"),
     "raye-taskmanager": ("raye-taskmanager",),
 }
@@ -1627,6 +1806,45 @@ def relaunch_updated_apps(updated, proc="/proc", kill=os.kill, runner=None,
         else:
             log(f"raye-update: could not open {program} again for {user}: {err[-200:]}")
     return done
+
+
+# user services started again once their package installed in use: the old
+# copy keeps running otherwise until the next sign-in
+USER_UNITS = {
+    "raye-polkit-agent": ("raye-polkit-agent.service",),
+    "raye-account": ("raye-accountd.service",),
+}
+
+
+def session_users(run_dir="/run/user", name_of=None):
+    """Names of the people signed in (they have a /run/user/<uid>)."""
+    if name_of is None:
+        import pwd
+        name_of = lambda uid: pwd.getpwuid(uid).pw_name
+    names = []
+    for entry in sorted(_listdir(run_dir)):
+        if entry.isdigit() and int(entry) >= 1000:
+            try:
+                names.append(name_of(int(entry)))
+            except KeyError:
+                pass
+    return names
+
+
+def restart_user_units(updated, runner=None, users=None):
+    """try-restart, in each session, the user services of the packages just
+    updated (only the ones running). Returns the users it asked."""
+    units = sorted({u for n in updated for u in USER_UNITS.get(n.split(":", 1)[0], ())})
+    if not units:
+        return []
+    runner = runner or run
+    users = session_users() if users is None else users
+    for user in users:
+        rc, _, err = runner(["systemctl", f"--machine={user}@.host", "--user", "try-restart",
+                             *units], timeout=60)
+        if rc != 0:
+            log(f"raye-update: could not start {' '.join(units)} again for {user}: {err[-200:]}")
+    return list(users)
 
 
 def start_live(asked=False):
@@ -1742,6 +1960,15 @@ def dpkg_half_configured():
     return bool(out.strip())
 
 
+def still_pending(pending):
+    """The entries of `pending` apt would still upgrade to the same version."""
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *UPGRADE])
+    if rc != 0:
+        return []
+    left = {(p["name"], p["to"]) for p in parse_simulation(out)}
+    return [p for p in pending if (p["name"], p["to"]) in left]
+
+
 def install_packages(on_percent):
     """Install the downloaded set. (ok, output tail)."""
     last = []
@@ -1753,12 +1980,15 @@ def install_packages(on_percent):
             last.append(int(percent))
             on_percent(int(percent))
     run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
-    cmd = ["apt-get", *APT_OPTS, "-y", "--no-download", *UPGRADE]
+    # what is downloaded: a package that turned up after the download (a
+    # phase that reached this PC, a newer version) waits for next time
+    # instead of failing the whole install with "unable to fetch"
+    cmd = ["apt-get", *APT_OPTS, "-y", *FROM_CACHE, *UPGRADE]
     rc, out = run_with_status(cmd, on_status)
     if rc != 0:
         # apt's own recovery, then one more try
         run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
-        run(["apt-get", *APT_OPTS, "-y", "--no-download", "-f", "install"])
+        run(["apt-get", *APT_OPTS, "-y", *FROM_CACHE, "-f", "install"])
         rc, out = run_with_status(cmd, on_status)
     return rc == 0, out
 
@@ -1995,10 +2225,17 @@ def install_offline(state, now=None, link=None, target=None):
         else:
             set_error(state, "firmware-failed")
     restore_point_after(point)
+    skipped = still_pending(state.pending)
+    if skipped:
+        # not downloaded, or held back with something that was not: the next check offers them
+        log("raye-update: left for the next round: " + ", ".join(p["name"] for p in skipped))
     clean_downloads()
     plymouth("system-update", "--progress=100")
     action = after_install(state, then, before)
     _finish(state, ok=True, now=now, link=link, target=target, firmware=fw_count)
+    if skipped:
+        state.lastInstall["count"] = max(0, state.lastInstall["count"] - len(skipped))
+        save(state)
     return action
 
 
@@ -2194,6 +2431,7 @@ def run_live(args, now):
         state = load()
         if state.phase == "installing" and not state.armed:
             state.phase = "ready" if state.readyId else "idle"   # an earlier one was cut
+            clear_marks(state)
         state = install_live(state, asked=args == ["now"], now=now)
         save_run(state)
     return 0
@@ -2210,6 +2448,7 @@ def live_ended():
             if state.phase == "installing" and not state.armed:
                 state.phase = "ready" if state.readyId else "idle"
                 state.installPercent = 0
+                clear_marks(state)
                 save(state)
     return 0
 

@@ -9,7 +9,8 @@
       "to": "1:141.0~build2",
       "origin": "mozilla:mozilla",
       "kind": "app",
-      "restart": false
+      "restart": false,
+      "state": "installing"
     }
   ],
   "count": 1,
@@ -46,5 +47,8 @@
   "checked": 1793462520,
   "ready_id": "3e1f0a9b7c21",
   "paused_until": 0,
-  "installPercent": 40
+  "installPercent": 40,
+  "checkPercent": 0,
+  "bytesPerSecond": 0,
+  "secondsLeft": 0
 }

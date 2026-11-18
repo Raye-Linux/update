@@ -41,6 +41,9 @@ write, so a watch on the old file stops firing.
   "error": null,
   "installAttempts": 0,
   "installPercent": 0,
+  "checkPercent": 0,
+  "bytesPerSecond": 0,
+  "secondsLeft": 0,
   "brokenSources": [
     {"uri": "mirror+file:/etc/apt/mirrors/raye.list", "problem": "offline"}
   ]
@@ -56,10 +59,10 @@ cannot be read or parsed means "idle, nothing known".
 | `version` | int | 2 | schema version |
 | `phase` | string | `idle` | see the phases below |
 | `waitReason` | string | `""` | while `phase` is `waiting`: `game`, `metered`, `battery` or `busy` (another install holds the package lock). With `phase` `ready`: why the updates that need no restart did not install in use yet (`battery` after Install now on a low battery) |
-| `pending` | list | `[]` | updates found, one object per package: `name`, `from` (empty for a new package), `to`, `origin`, `kind` (`kernel`, `driver`, `security`, `app`, `system`), `restart` (see below). `raye-kernel` only points at a kernel and is `system` |
+| `pending` | list | `[]` | updates found, one object per package: `name`, `from` (empty for a new package), `to`, `origin`, `kind` (`kernel`, `driver`, `security`, `app`, `system`), `restart` (see below). `raye-kernel` only points at a kernel and is `system`. While updates install in use, the ones of that run also carry `state`: `queued`, `installing`, `installed` or `failed`; the key is gone once the run ends |
 | `count` | int | 0 | number of pending packages |
 | `downloadedBytes` | int | 0 | bytes downloaded so far in this set |
-| `totalBytes` | int | 0 | bytes this set needs to download (0 when everything is already downloaded) |
+| `totalBytes` | int | 0 | bytes this set needs to download (0 when everything is already downloaded). Known from the check on, before the download starts |
 | `needsRestart` | bool | false | downloaded updates wait for a restart: at least one `pending` entry has `restart` true, or there is firmware. False when everything downloaded installs in use: then no reader offers "Update and restart" |
 | `readyId` | string | `""` | changes each time a new set is ready; empty while nothing is downloaded |
 | `pausedUntil` | number | 0 | no checking or downloading before this time; 0 = not paused |
@@ -67,12 +70,15 @@ cannot be read or parsed means "idle, nothing known".
 | `autoRestart` | bool | false | the owner lets the PC restart on its own outside active hours |
 | `armed` | object or null | null | `{"then": "restart" or "shutdown", "at": time}` once someone picked "Update and restart/shut down"; `at` is 0 for "at the next restart", else the scheduled time |
 | `lastCheck` | number | 0 | last successful check |
-| `lastInstall` | object or null | null | `time`, `count` (packages), `firmware` (devices), `ok`; after an install in use that failed, also `restartSet`: the `readyId` of what it left. That set is not tried in use again, it waits for the restart |
+| `lastInstall` | object or null | null | `time`, `count` (packages), `firmware` (devices), `ok`; after an install in use that failed, also `restartSet`: the `readyId` of what it left. That set is not tried in use again, it waits for the restart. After an install in use, `packages`: the names it installed, so a reader can still show them as done once they left `pending` |
 | `kernelChange` | bool | false | the pending set changes the kernel |
 | `firmware` | list | `[]` | firmware updates from fwupd: `device`, `deviceId`, `from`, `to`, `summary`, `size`, and `sha256`, `location` of the cabinet (kept in `/var/cache/raye-update/firmware/<sha256>.cab` once downloaded), `needsPower` (fwupd wants the charger plugged in; missing means false). A device that already runs `to` or newer is not listed. Firmware always installs at the next start-up |
 | `error` | object or null | null | `{"code": ..., "detail": ...}`; `detail` is the tail of the tool output, for a "Details" expander only, never as the message |
 | `installAttempts` | int | 0 | boots that started the install of the armed set; reset after it ends |
 | `installPercent` | int | 0 | 0–100 while updates install in use (`phase` `installing`, `armed` null) |
+| `checkPercent` | int | 0 | 0–100 while `phase` is `checking`: how much of the lists apt has read. Never goes back; 0 once the check ends |
+| `bytesPerSecond` | int | 0 | while `phase` is `downloading`: the download speed, averaged over a few seconds |
+| `secondsLeft` | int | 0 | while `phase` is `downloading`: time left at that speed. 0 means "cannot be told" (just started, or stalled), never "done" |
 | `brokenSources` | list | `[]` | the places updates come from that the last check could not read, one object per repository: `uri` (as apt is configured with it) and `problem` (`offline`, `missing`, `unsigned`, `invalid`, `unknown`). Empty is the normal case. Added after the first version 2 readers shipped: a file without the key means "none known" |
 | `checkedEverything` | bool | true | the last check read **every** repository apt is configured with. Derived (`brokenSources` empty and `phase` not `error`) and written anyway, so four readers do not each derive it their own way. **Never say "you're up to date" while this is false** - see below. A file without the key was written by a client that only had the all-clear case, so its absence means `true` |
 
@@ -104,6 +110,17 @@ one of the pinned ones is held back by apt, so it waits for the restart
 too. When the pins do not hold, or apt would remove something, everything
 waits for the restart.
 
+Checked one by one for 0.6: a GRUB theme (`grub-theme-raye`) is only read at
+the next start, and Raye's own QML modules (`qml6-module-org-raye-account`,
+`qml6-module-org-raye-setup`) are loaded by apps, never by the shell, so
+they install in use (Settings is closed and opened again when its account
+module changed). The admin prompt (`raye-polkit-agent`) and the account
+service (`raye-account`) install in use too, and their user service is
+started again in each session right after (`try-restart`, so only where it
+runs). A password prompt open at that very moment closes; the action that
+asked for it can be started again. The theme, the shell and the style stay on the list: the shell and
+KWin load their QML, effects and decoration long after they started.
+
 `raye-update-live@auto.service` installs them after a download, judged as
 the download is (not in a game, not on a low battery, not on a metered
 network); the Install button starts `raye-update-live@now.service`, which
@@ -114,14 +131,45 @@ again. On a low battery Install now does nothing and says so in
 `waitReason`. When the unit stops without writing its end (killed),
 `raye-update live-ended` sets `phase` back to `ready`.
 
+### Updates apt holds back
+
+Nothing apt holds back is an error, and none of it is offered: it is not in
+`pending`, it never makes a restart, and it comes in the day it can.
+
+- **Phased updates.** Ubuntu gives a new version to a share of the machines
+  first, a little more each day, and draws each source package on its own,
+  so a Plasma point release would reach a PC a few packages at a time over
+  a week, with two versions of the desktop mixed in between. Every apt run
+  of Raye Update passes `APT::Get::Never-Include-Phased-Updates=true`: a
+  phased update waits until Ubuntu gives it to everyone, then comes in with
+  the rest of its release, in one set. Security updates are never phased.
+- **Kept back.** An update whose new version needs a newer build of a
+  package Raye rebuilds and pins (Plasma, see `raye-pins.pref`) is kept back
+  by `apt-get upgrade` until Raye publishes that build. Same for a package a
+  person put on hold (`apt-mark hold`).
+- **Files that did not download.** A mirror still syncing answers 404 for a
+  file its lists already name, and the archive keeps only the newest update,
+  so a version can vanish between the check and the download. The download
+  goes on with the other files; the set that is ready is what the
+  downloaded files can install (`apt-get -s --no-download --fix-missing`),
+  the rest is found again at the next check. Only a download where nothing
+  usable arrived is an error.
+- **What turned up after the download.** Both installs take only what is
+  downloaded (`--no-download --fix-missing`): a package the lists offer
+  since (a phase that reached everyone, a newer version) waits for the next
+  round. Without `--fix-missing` apt refuses the whole install as soon as
+  one file is missing.
+
+`tests/test_real_apt.py` checks the four against the real apt.
+
 ### Phases
 
 | `phase` | What it means | What a reader shows |
 |---|---|---|
 | `idle` | nothing to install (`count` 0); with `count` above 0, updates were found by `check` and not downloaded yet | "You're up to date" **only if `checkedEverything`** / "Updates available" |
-| `checking` | reading the list of updates | "Checking for updates…" |
+| `checking` | reading the list of updates, `checkPercent` done | "Checking for updates…" |
 | `waiting` | updates found, waiting for a better moment (`waitReason`) | "Updates are waiting" + reason |
-| `downloading` | downloading, `downloadedBytes` of `totalBytes` | "Downloading – 45 %" |
+| `downloading` | downloading, `downloadedBytes` of `totalBytes`, `bytesPerSecond`, `secondsLeft` | "Downloading – 45 % · 4 MB/s · about 2 minutes left" |
 | `ready` | downloaded; waiting for a restart when `needsRestart`, else for the install in use | "Restart required" / "Ready to install" |
 | `armed` | someone picked "Update and restart/shut down" | "Your PC will update when it restarts" |
 | `installing` | with `armed` set: the install at start-up (seen only from a recovery shell); with `armed` null: updates installing in use, `installPercent` done | "Installing – 40 %" |
