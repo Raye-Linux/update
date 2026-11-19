@@ -15,6 +15,8 @@ FIXTURES = os.path.join(HERE, "fixtures")
 def quiet_check(monkeypatch):
     """apt-get update goes through run() in the tests, like every other apt call."""
     monkeypatch.setattr(ru, "CHECK_PROGRESS", False)
+    # the machine running the tests may have a Raye kernel of its own
+    monkeypatch.setattr(ru, "FOLLOW_RAYE_KERNEL", False)
 
 
 def fixture(name):

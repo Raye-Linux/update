@@ -147,6 +147,11 @@ FROM_CACHE = ["--no-download", "--fix-missing"]
 # never removes a package: new dependencies (a new kernel ABI) come in,
 # anything that would need a removal waits for a person to decide
 UPGRADE = ["upgrade", "--with-new-pkgs"]
+# Each Raye kernel version is a package of its own (linux-image-7.0.15-raye)
+# that no meta package points at, so a plain upgrade never sees it: on a PC
+# that has one, the newest is named with the upgrade. Off in the tests.
+FOLLOW_RAYE_KERNEL = True
+_RAYE_IMAGE = re.compile(r"^linux-image-(\d+(?:\.\d+)*)(?:-[\w.]+)?-raye$")
 # The one exception: packages an earlier Raye installed itself and a later
 # one replaced. They go at the start-up install, or at the next check when
 # that install had nothing to put in their place, once what replaces them
@@ -453,6 +458,75 @@ def classify(name, origins):
     if origins and not any(o.split(":", 1)[0] in ("Ubuntu", "Raye") for o in origins):
         return "app"
     return "system"
+
+
+def _kernel_key(name):
+    m = _RAYE_IMAGE.match(name)
+    return tuple(int(n) for n in re.findall(r"\d+", name[len("linux-image-"):])) if m else None
+
+
+def kernel_followups(images, headers, available):
+    """The newer Raye kernel to install with the upgrade: [] when this PC
+    has none, or already has the newest. Its headers come too when the
+    ones of the kernel in use are there (DKMS builds against them)."""
+    mine = [n for n in images if _kernel_key(n)]
+    if not mine:
+        return []
+    newest = max(_kernel_key(n) for n in mine)
+    newer = [n for n in available if _kernel_key(n) and _kernel_key(n) > newest and n not in images]
+    if not newer:
+        return []
+    image = max(newer, key=_kernel_key)
+    out = [image]
+    header = "linux-headers-" + image[len("linux-image-"):]
+    if any(h.startswith("linux-headers-") and h.endswith("-raye") for h in headers) and header in available:
+        out.append(header)
+    return out
+
+
+def _installed(pattern):
+    rc, out, _ = run(["dpkg-query", "-W", "-f", "${Package} ${Status}\n", pattern])
+    if rc != 0:
+        return []
+    return [line.split()[0] for line in out.splitlines() if line.endswith(" installed")]
+
+
+def raye_kernel_followups():
+    """kernel_followups() for this PC, from dpkg and the apt indexes."""
+    if not FOLLOW_RAYE_KERNEL:
+        return []
+    images = _installed("linux-image-*-raye")
+    if not images:
+        return []
+    available = []
+    for prefix in ("linux-image-", "linux-headers-"):
+        rc, out, _ = run(["apt-cache", "pkgnames", prefix])
+        if rc == 0:
+            available += [n for n in out.split() if n.endswith("-raye")]
+    followups = kernel_followups(images, _installed("linux-headers-*-raye"), available)
+    # one that cannot install (not all published yet) would fail the whole
+    # upgrade: it waits for the next check instead
+    if followups and run(["apt-get", "-s", *APT_OPTS, "install", *followups])[0] != 0:
+        log(f"raye-update: {' '.join(followups)} cannot install yet, it waits")
+        return []
+    return followups
+
+
+def upgrade_args(extra=None):
+    """`upgrade --with-new-pkgs`, and the newer Raye kernel when there is one."""
+    return [*UPGRADE, *(raye_kernel_followups() if extra is None else extra)]
+
+
+def settle_raye_kernels(followups):
+    """A kernel named on the command line is marked as asked for, and would
+    never be removed. Marked automatic, the Raye kernels follow apt's kernel
+    rule (the one in use and the newest two stay) and unattended-upgrades
+    takes the older ones away."""
+    if not followups:
+        return
+    mine = _installed("linux-image-*-raye") + _installed("linux-headers-*-raye")
+    if mine:
+        run(["apt-mark", "auto", *mine])
 
 
 def parse_simulation(output):
@@ -1027,7 +1101,7 @@ def list_updates(on_percent=None):
         # no repository explains this: let it be seen rather than waved
         # through because the simulation happens to answer
         return None, broken, err or out
-    rc, out, err = run(["apt-get", "-s", *APT_OPTS, *UPGRADE])
+    rc, out, err = run(["apt-get", "-s", *APT_OPTS, *upgrade_args()])
     if rc != 0:
         return None, broken, err or out
     pending = parse_simulation(out)
@@ -1154,14 +1228,14 @@ def swap_left_over(swap=True):
 def bytes_to_download():
     # the same options as the simulation: a phased update counted here and
     # left out there would be "still to download" forever
-    rc, out, _ = run(["apt-get", "--print-uris", *APT_OPTS, "-qq", *UPGRADE])
+    rc, out, _ = run(["apt-get", "--print-uris", *APT_OPTS, "-qq", *upgrade_args()])
     return parse_print_uris(out) if rc == 0 else 0
 
 
 def cached_set(pending):
     """The entries of `pending` apt can install from what is downloaded,
     None when apt cannot say."""
-    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *UPGRADE])
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *upgrade_args()])
     if rc != 0:
         return None
     have = {(p["name"], p["to"]) for p in parse_simulation(out)}
@@ -1418,7 +1492,7 @@ def download(state, gaming=None):
                 last[0], last[1] = percent, now
                 save_run(state)
         try:
-            rc, out = run_with_status(["apt-get", *APT_OPTS, "-y", "-d", *UPGRADE], on_status)
+            rc, out = run_with_status(["apt-get", *APT_OPTS, "-y", "-d", *upgrade_args()], on_status)
         finally:
             meter.stop()
         if rc != 0 and not keep_what_arrived(state, out):
@@ -1692,7 +1766,7 @@ def _install_live(state, pins, offline, now):
     clear_marks(state)
     # what the cache can still install: the restart takes it. What turned up
     # since the download is not part of it; the next check finds it.
-    rc_sim, sim, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *UPGRADE])
+    rc_sim, sim, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *upgrade_args()])
     left = parse_simulation(sim) if rc_sim == 0 else [p for p in state.pending if p["name"] not in live]
     for p in left:
         p["restart"] = True     # the next start-up installs all of it
@@ -1962,7 +2036,7 @@ def dpkg_half_configured():
 
 def still_pending(pending):
     """The entries of `pending` apt would still upgrade to the same version."""
-    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *UPGRADE])
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *upgrade_args()])
     if rc != 0:
         return []
     left = {(p["name"], p["to"]) for p in parse_simulation(out)}
@@ -1983,13 +2057,16 @@ def install_packages(on_percent):
     # what is downloaded: a package that turned up after the download (a
     # phase that reached this PC, a newer version) waits for next time
     # instead of failing the whole install with "unable to fetch"
-    cmd = ["apt-get", *APT_OPTS, "-y", *FROM_CACHE, *UPGRADE]
+    followups = raye_kernel_followups()
+    cmd = ["apt-get", *APT_OPTS, "-y", *FROM_CACHE, *upgrade_args(followups)]
     rc, out = run_with_status(cmd, on_status)
     if rc != 0:
         # apt's own recovery, then one more try
         run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
         run(["apt-get", *APT_OPTS, "-y", *FROM_CACHE, "-f", "install"])
         rc, out = run_with_status(cmd, on_status)
+    if rc == 0:
+        settle_raye_kernels(followups)
     return rc == 0, out
 
 

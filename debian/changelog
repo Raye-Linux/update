@@ -1,3 +1,10 @@
+raye-update (1.0~beta2) resolute; urgency=medium
+
+  * PCs on the Raye kernel get its new versions with the other updates;
+    older kernels are removed, the newest two kept.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 19 Nov 2026 19:00:00 +0000
+
 raye-update (1.0~beta1) resolute; urgency=medium
 
   * Updates Ubuntu hands out in phases (Plasma point releases) come in once
