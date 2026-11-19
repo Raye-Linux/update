@@ -1,3 +1,16 @@
+raye-update (1.0~beta1) resolute; urgency=medium
+
+  * Updates Ubuntu hands out in phases (Plasma point releases) come in once
+    everyone gets them, in one set, instead of a few packages a day.
+  * A file that fails to download or turns up missing no longer stops the
+    other updates or shows an error: it is tried again at the next check.
+  * Raye Update says how far the check got, the download speed and time
+    left, and where each update is while they install.
+  * The GRUB theme, the Raye account and the admin prompt update without a
+    restart.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 19 Nov 2026 06:00:00 +0000
+
 raye-update (0.5.9~beta1) resolute; urgency=medium
 
   * Settings closed for its own update now opens again on the Raye Update
