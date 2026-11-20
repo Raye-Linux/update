@@ -2418,7 +2418,26 @@ def after_install(state, then, before):
 def shutdown_screen(link=None, target=None):
     """On the way down to a restart that installs updates: say so right
     away rather than "Restarting", since the update screen only comes once
-    the PC has started again and the disk is open."""
+    the PC has started again and the disk is open.
+
+    PackageKit removes /system-update each time apt tells it the lists or
+    the packages changed (20packagekit), whoever made the link: a look at
+    the lists while an update waits for the restart, ours or anyone's, left
+    the state armed and the next start without its install. Here, once
+    PackageKit is down (the unit is ordered after it), an install the state
+    still holds armed is set again. Another tool's link is never touched."""
+    if offline_owner(link, target) is None:
+        try:
+            state = load()
+        except Exception:           # never in the way of the restart
+            state = None
+        if state is not None and state.armed and state.phase == "armed" and state.readyId:
+            armed = state.armed
+            if arm(state, armed.get("then", "restart"), armed.get("at", 0),
+                   link=link, target=target) == 0:
+                save(state)
+                log("raye-update: the update waiting for the next start had been"
+                    " disarmed by another tool, it is set again")
     if offline_owner(link, target) == "raye":
         plymouth("display-message", "--text=raye:mode:prepare")
     return 0

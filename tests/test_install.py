@@ -729,6 +729,42 @@ def test_restart_into_updates_says_so_at_once(paths, no_tools):
     assert no_tools["plymouth"] == [("display-message", "--text=raye:mode:prepare")]
 
 
+def test_restart_sets_again_a_start_up_install_packagekit_took_away(paths, no_tools):
+    # PackageKit drops /system-update whenever apt tells it the lists or the
+    # packages changed (StateHasChanged cache-update, from 20packagekit),
+    # whoever made the link. Seen on VM 130 on 2026-11-20: the timer's look
+    # at the lists while an update waited for the restart took the link away
+    # a few seconds later; the state still said "armed", the restart started
+    # normally and nothing was installed, every time.
+    st = ready_state()
+    ru.arm(st, "restart")
+    ru.save(st)
+    os.unlink(paths["link"])
+    assert ru.shutdown_screen() == 0
+    assert os.readlink(paths["link"]) == paths["target"]
+    assert open(paths["target"]).read().strip() == st.readyId
+    assert ru.load().armed == {"then": "restart", "at": 0}
+    assert no_tools["plymouth"] == [("display-message", "--text=raye:mode:prepare")]
+
+
+def test_restart_never_takes_over_another_tools_install(paths, no_tools):
+    st = ready_state()
+    ru.arm(st, "restart")
+    ru.save(st)
+    os.unlink(paths["link"])
+    os.symlink("/var/lib/someone-else", paths["link"])
+    assert ru.shutdown_screen() == 0
+    assert os.readlink(paths["link"]) == "/var/lib/someone-else"
+    assert no_tools["plymouth"] == []
+
+
+def test_restart_does_not_arm_what_was_not_armed(paths, no_tools):
+    ru.save(ready_state())
+    assert ru.shutdown_screen() == 0
+    assert not os.path.lexists(paths["link"])
+    assert no_tools["plymouth"] == []
+
+
 @pytest.mark.parametrize("armed", [None, "other"])
 def test_plain_restart_keeps_its_words(paths, no_tools, armed):
     if armed:
@@ -746,7 +782,13 @@ def test_shutdown_screen_unit_runs_on_the_way_down():
     before = u[("[Unit]", "Before")].split()
     for p in ("systemd-reboot.service", "systemd-poweroff.service", "systemd-halt.service"):
         assert p in before
-    assert u[("[Unit]", "ConditionPathIsSymbolicLink")] == "/system-update"
+    # the code decides: a link PackageKit took away is set again here, so a
+    # condition on the link would skip exactly that case
+    assert ("[Unit]", "ConditionPathIsSymbolicLink") not in u
+    # started once PackageKit and the last look at the lists are down: they
+    # are what takes the link away
+    for p in ("packagekit.service", "raye-update-catch-up.service"):
+        assert p in after
     assert u[("[Service]", "ExecStart")] == "/usr/libexec/raye-update shutdown-screen"
     assert set(u[("[Install]", "WantedBy")].split()) == {"reboot.target", "poweroff.target",
                                                           "halt.target"}

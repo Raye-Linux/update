@@ -4,10 +4,13 @@ Documentation=https://github.com/Raye-Linux/update
 # pulled in on the way down; "Restarting" alone looked like nothing was
 # happening until the update screen came up after the restart
 DefaultDependencies=no
-After=plymouth-reboot.service plymouth-poweroff.service plymouth-halt.service
+# PackageKit takes /system-update away when apt says the lists changed, and
+# the last look at the lists runs as the PC stops: start once both are down,
+# so an update still armed in the state is set again for good (the code
+# decides, hence no condition on the link)
+After=plymouth-reboot.service plymouth-poweroff.service plymouth-halt.service packagekit.service raye-update-catch-up.service
 # else the restart can go ahead before the words reach the screen
 Before=systemd-reboot.service systemd-poweroff.service systemd-halt.service
-ConditionPathIsSymbolicLink=/system-update
 
 [Service]
 Type=oneshot
