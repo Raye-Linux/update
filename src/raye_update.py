@@ -1064,12 +1064,12 @@ def power(then):
 
 # --- check and download -----------------------------------------------------
 
-def update_lists(on_percent=None):
+def update_lists(on_percent=None, timeout=3600):
     """apt-get update: (returncode, stdout, stderr). With on_percent, the
     percentage apt reports goes to it as the lists come in."""
     cmd = ["apt-get", "update", *APT_OPTS]
     if on_percent is None:
-        return run(cmd)
+        return run(cmd, timeout=timeout)
     done = [0]
 
     def on_status(kind, item, percent, msg):
@@ -1077,11 +1077,11 @@ def update_lists(on_percent=None):
         if kind == "dlstatus" and int(percent) > done[0]:
             done[0] = min(100, int(percent))
             on_percent(done[0])
-    rc, out = run_with_status(cmd, on_status, timeout=3600, keep=None)
+    rc, out = run_with_status(cmd, on_status, timeout=timeout, keep=None)
     return rc, out, ""
 
 
-def list_updates(on_percent=None):
+def list_updates(on_percent=None, timeout=3600):
     """(pending, broken sources, error text or "").
 
     `pending` is None when nothing could be worked out; `broken` is None when
@@ -1096,7 +1096,7 @@ def list_updates(on_percent=None):
     repository failed we know nothing, and saying "up to date" to a machine
     that reached nothing is worse than saying nothing at all.
     """
-    rc, out, err = update_lists(on_percent)
+    rc, out, err = update_lists(on_percent, timeout)
     text = (out or "") + "\n" + (err or "")
     if rc != 0 and is_lock_error(text):
         return None, None, err or out        # another install: simply come back later
@@ -1237,6 +1237,13 @@ def bytes_to_download():
     # left out there would be "still to download" forever
     rc, out, _ = run(["apt-get", "--print-uris", *APT_OPTS, "-qq", *upgrade_args()])
     return parse_print_uris(out) if rc == 0 else 0
+
+
+def cached_set_plan():
+    """What apt would install at start-up from what is downloaded. The
+    lists may have been read again since the pending set was saved."""
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *FROM_CACHE, *upgrade_args()])
+    return parse_simulation(out) if rc == 0 else []
 
 
 def cached_set(pending):
@@ -1415,7 +1422,10 @@ def settle(state, pending, firmware, cached=False):
 CHECK_PROGRESS = True
 
 
-def check(state, now=None):
+def check(state, now=None, lists_timeout=3600, firmware=True):
+    """Read the lists and work out the pending set. firmware=False keeps the
+    firmware already known (a look right before an install or a restart:
+    fwupd can take minutes and has nothing to do with apt's versions)."""
     state.phase, state.waitReason, state.error = "checking", "", None
     state.checkPercent = 0
     save_run(state)
@@ -1423,7 +1433,7 @@ def check(state, now=None):
         state.checkPercent = pct
         save_run(state)
     try:
-        pending, broken, err = list_updates(show if CHECK_PROGRESS else None)
+        pending, broken, err = list_updates(show if CHECK_PROGRESS else None, lists_timeout)
     finally:
         state.checkPercent = 0
     if pending is None and not is_lock_error(err) and dpkg_half_configured():
@@ -1446,7 +1456,7 @@ def check(state, now=None):
         else:
             set_error(state, classify_error(err), err)
         return state
-    firmware = list_firmware()
+    firmware = list_firmware() if firmware else state.firmware
     key = settle(state, pending, firmware)
     if not key:
         state.totalBytes = state.downloadedBytes = 0
@@ -1465,15 +1475,18 @@ def check(state, now=None):
     return state
 
 
-def download(state, gaming=None):
-    """Download the pending set if now is a good moment; ready when done."""
+def download(state, gaming=None, asked=False, timeout=None):
+    """Download the pending set if now is a good moment; ready when done.
+    asked: a person is waiting for it (Install now, Restart now), so a game
+    or a metered network does not make it wait; a low battery still does."""
     key = ready_key(state.pending, state.firmware)
     if not key:
         state.phase, state.readyId, state.needsRestart = "idle", "", False
         state.totalBytes = state.downloadedBytes = 0
         return state
     on_ac, battery = battery_level()
-    reason = why_wait(on_ac, battery, is_metered(), is_gaming() if gaming is None else gaming)
+    reason = why_wait(on_ac, battery, False if asked else is_metered(),
+                      False if asked else (is_gaming() if gaming is None else gaming))
     if reason:
         state.phase, state.waitReason = "waiting", reason
         return state
@@ -1484,24 +1497,16 @@ def download(state, gaming=None):
         return state
     state.totalBytes, state.downloadedBytes = total, 0
     if total:
-        state.phase, state.waitReason = "downloading", ""
-        save_run(state)
-        last = [0.0, 0.0]
-        meter = SpeedMeter(state)
-
-        def on_status(kind, item, percent, msg):
-            if kind != "dlstatus":
-                return
-            state.downloadedBytes = min(total, int(total * percent / 100))
-            meter.update(state.downloadedBytes)
-            now = clock()
-            if percent - last[0] >= 2 or now - last[1] >= 2:   # do not flood the readers
-                last[0], last[1] = percent, now
-                save_run(state)
-        try:
-            rc, out = run_with_status(["apt-get", *APT_OPTS, "-y", "-d", *upgrade_args()], on_status)
-        finally:
-            meter.stop()
+        rc, out = _fetch(state, total, timeout)
+        if rc != 0 and not is_lock_error(out) and classify_error(out) != "no-space" \
+                and newer_since_the_check(state, timeout or 3600):
+            # a file the archive replaced since the lists were read (a newer
+            # version came out, the old one left): read the lists again and
+            # take the newest, once
+            log("raye-update: a newer version came out during the download, it is taken instead")
+            total = bytes_to_download()
+            state.totalBytes = total
+            rc, out = _fetch(state, total, timeout) if total else (0, "")
         if rc != 0 and not keep_what_arrived(state, out):
             return state
         state.downloadedBytes = total
@@ -1516,6 +1521,48 @@ def download(state, gaming=None):
     state.readyId = ready_key(state.pending, state.firmware)
     state.needsRestart = restart_left(state)
     return state
+
+
+def _fetch(state, total, timeout):
+    """apt-get -d of the upgrade, its progress in the state. (rc, output)."""
+    state.phase, state.waitReason = "downloading", ""
+    state.downloadedBytes = 0
+    save_run(state)
+    last = [0.0, 0.0]
+    meter = SpeedMeter(state)
+
+    def on_status(kind, item, percent, msg):
+        if kind != "dlstatus":
+            return
+        state.downloadedBytes = min(total, int(total * percent / 100))
+        meter.update(state.downloadedBytes)
+        now = clock()
+        if percent - last[0] >= 2 or now - last[1] >= 2:   # do not flood the readers
+            last[0], last[1] = percent, now
+            save_run(state)
+    try:
+        cmd = ["apt-get", *APT_OPTS, "-y", "-d", *upgrade_args()]
+        # a time limit only for a look right before a restart
+        return run_with_status(cmd, on_status, timeout=timeout) if timeout else \
+            run_with_status(cmd, on_status)
+    finally:
+        meter.stop()
+
+
+def newer_since_the_check(state, timeout=3600):
+    """After a download that failed: read the lists again. True when they
+    now name other versions than the pending set (which then becomes the
+    new one); False when nothing changed, or they could not be read."""
+    pending, _broken, _err = list_updates(timeout=timeout)
+    if pending is None:
+        return False
+    if {(p["name"], p["to"]) for p in pending} == {(p["name"], p["to"]) for p in state.pending}:
+        return False
+    state.pending, state.count = pending, len(pending)
+    state.readyId = ""
+    settle(state, pending, state.firmware)
+    state.kernelChange = any(p["kind"] == "kernel" for p in pending)
+    return True
 
 
 def keep_what_arrived(state, out):
@@ -1608,14 +1655,15 @@ def kept_back(output):
     return names
 
 
-def whole_raye_sources(pending, offline, cached=False):
+def whole_raye_sources(pending, offline, cached=False, extra=()):
     """`offline`, and with it every other update of the Raye archive built
     from the same source as one that cannot install now (it needs a
     restart, or apt keeps it back). Raye's binary packages of one source
     are made to work together: raye-desktop 1.0 named a helper that only
     raye-system 1.0 has, and taking the first without the second left a
     PC without a sign-in screen (2026-11-19). Ubuntu's packages are left
-    as they are, phasing and all."""
+    as they are, phasing and all. `extra`: what the upgrade also names (the
+    newer Raye kernel), so it is seen as part of the plan."""
     offline = set(offline)
     raye = {_base(p["name"]) for p in pending if is_raye(p)}
     if not raye:
@@ -1627,7 +1675,7 @@ def whole_raye_sources(pending, offline, cached=False):
         try:
             with pins_file(pending, offline) as pins:
                 rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *pins,
-                                  *(FROM_CACHE if cached else ()), *UPGRADE])
+                                  *(FROM_CACHE if cached else ()), *UPGRADE, *extra])
         except OSError:
             return offline
         if rc != 0:
@@ -1827,10 +1875,65 @@ def install_live(state, asked=False, gaming=None, now=None):
     if dpkg_half_configured():
         # an install cut short: apt cannot work anything out before this
         repair_dpkg()
+    if not catch_up_live(state, asked, gaming, now):
+        return state
+    if not live_waiting(state):
+        return state
     offline = whole_raye_sources(state.pending, offline_names(state.pending), cached=True)
     with pins_file(state.pending, offline) as pins:
         # the install reads the very file its simulation read
         return _install_live(state, pins, offline, now)
+
+
+# A check this recent is the one that started the install: not read again.
+CATCH_UP_FRESH = 300
+
+
+def _copy(state):
+    return from_json(to_json(state))
+
+
+def _restore(state, saved):
+    for key, value in vars(saved).items():
+        setattr(state, key, value)
+
+
+def catch_up_live(state, asked=False, gaming=None, now=None):
+    """Right before an install in use: read the lists again and download
+    what came out since the download, so the install takes the newest
+    version and never one it knows is old. False when another apt is
+    reading the lists (the install waits for its own turn).
+
+    The install only takes what is downloaded AND what the lists name
+    (--no-download): a newer version that could not be downloaded leaves
+    that package for later, never its older file in its place."""
+    now = time.time() if now is None else now
+    if now - (state.lastCheck or 0) < CATCH_UP_FRESH:
+        return True
+    saved = _copy(state)
+    check(state, now, firmware=False)
+    if state.phase == "waiting":
+        _restore(state, saved)
+        state.waitReason = "busy"
+        return False
+    if state.phase == "error":
+        # apt keeps the lists it had: the download is the newest it knows
+        log("raye-update: the lists could not be read again, the downloaded set installs")
+        _restore(state, saved)
+        return True
+    if state.pending and (not state.readyId or bytes_to_download()):
+        download(state, gaming=gaming, asked=asked)
+        if state.phase == "waiting":
+            # a newer version cannot be downloaded now: what is here and
+            # still the newest installs, the rest waits for its download
+            have = cached_set(state.pending) or []
+            state.pending, state.count = have, len(have)
+            settle(state, have, state.firmware, cached=True)
+            state.kernelChange = any(p["kind"] == "kernel" for p in have)
+            state.readyId = ready_key(have, state.firmware)
+            state.phase = "ready" if state.readyId else "idle"
+            state.needsRestart = restart_left(state)
+    return True
 
 
 def clear_marks(state):
@@ -2175,7 +2278,7 @@ def still_pending(pending):
     return [p for p in pending if (p["name"], p["to"]) in left]
 
 
-def install_packages(on_percent):
+def install_packages(on_percent, followups=None):
     """Install the downloaded set. (ok, output tail)."""
     last = []
 
@@ -2188,18 +2291,39 @@ def install_packages(on_percent):
     run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
     # what is downloaded: a package that turned up after the download (a
     # phase that reached this PC, a newer version) waits for next time
-    # instead of failing the whole install with "unable to fetch"
-    followups = raye_kernel_followups()
-    cmd = ["apt-get", *APT_OPTS, "-y", *FROM_CACHE, *upgrade_args(followups)]
-    rc, out = run_with_status(cmd, on_status)
-    if rc != 0:
-        # apt's own recovery, then one more try
-        run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
-        run(["apt-get", *APT_OPTS, "-y", *FROM_CACHE, "-f", "install"])
+    # instead of failing the whole install with "unable to fetch". apt only
+    # ever takes the version its lists name: an older file in the cache is
+    # never installed in place of a newer one it could not download.
+    followups = raye_kernel_followups() if followups is None else followups
+    plan, held = start_up_holds(followups)
+    with contextlib.ExitStack() as stack:
+        pins = stack.enter_context(pins_file(plan, held)) if held else []
+        cmd = ["apt-get", *APT_OPTS, *pins, "-y", *FROM_CACHE, *upgrade_args(followups)]
         rc, out = run_with_status(cmd, on_status)
+        if rc != 0:
+            # apt's own recovery, then one more try
+            run(["dpkg", "--configure", "-a", "--force-confdef", "--force-confold"])
+            run(["apt-get", *APT_OPTS, *pins, "-y", *FROM_CACHE, "-f", "install"])
+            rc, out = run_with_status(cmd, on_status)
     if rc == 0:
         settle_raye_kernels(followups)
     return rc == 0, out
+
+
+def start_up_holds(followups=()):
+    """(plan, names held) for the install at start-up. The lists may be
+    newer than the download (read again, then the PC stopped before the
+    download ended): a Raye source of which only part of the newest version
+    is downloaded waits whole, never installed in part (the rule of
+    whole_raye_sources, at start-up too). Nothing held when nothing needs it."""
+    rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *upgrade_args(followups)])
+    plan = parse_simulation(out) if rc == 0 else []
+    if not any(is_raye(p) for p in plan):
+        return plan, set()
+    held = whole_raye_sources(plan, set(), cached=True, extra=followups)
+    if held:
+        log("raye-update: waits until all of it is downloaded: " + ", ".join(sorted(held)))
+    return plan, held
 
 
 def install_firmware(firmware, cache=None):
@@ -2394,7 +2518,8 @@ def install_offline(state, now=None, link=None, target=None):
     plymouth("system-update", "--progress=0")
     if interrupted or dpkg_half_configured():
         plymouth("display-message", "--text=raye:finishing-updates")
-    if any(BOOT_CHAIN.match(p["name"].split(":", 1)[0]) for p in state.pending):
+    coming = {p["name"] for p in state.pending} | {p["name"] for p in cached_set_plan()}
+    if any(BOOT_CHAIN.match(n.split(":", 1)[0]) for n in coming):
         # a new shim, GRUB or dbx can change PCR 7 in ways raye-tpm cannot predict:
         # the TPM opens the next start without it, then seals to it again
         rc, out, err = run([RAYE_TPM, "suspend"], timeout=600)
@@ -2534,9 +2659,52 @@ def parse_arm(args, now):
     return then, at, right_now
 
 
+def refresh_armed(state, now, lists_timeout=3600, download_timeout=None, asked=False):
+    """The set waiting for the next start is brought to the newest version:
+    the lists are read again and what came out since is downloaded, the
+    install at start-up stays armed. When the lists cannot be read, the
+    set stays as it was (the newest this PC knows). When a newer version
+    cannot be downloaded now, the start-up install leaves that package for
+    the next round rather than install its older file (apt takes only what
+    its lists name), and a Raye source waits whole (start_up_holds).
+
+    A Raye source installed in part (an older Raye Update, 0.5 to 1.0 Beta)
+    is finished first with what is downloaded: the sign-in screen depends
+    on it, a newer version comes the round after."""
+    if not state.armed or state.phase != "armed" or is_paused(state, now):
+        return state
+    split = split_raye_sources(state.pending)
+    if split:
+        log("raye-update: " + ", ".join(sorted(split))
+            + " is finished at the next start before anything newer is looked for")
+        return state
+    saved = _copy(state)
+    check(state, now, lists_timeout=lists_timeout, firmware=False)
+    if state.phase in ("error", "waiting"):
+        _restore(state, saved)
+        save_run(state)
+        return state
+    if state.pending and (not state.readyId or bytes_to_download()):
+        download(state, asked=asked, timeout=download_timeout)
+        if state.phase == "error":
+            # what is downloaded and still the newest installs at the start
+            state.error, state.phase = None, "ready"
+    newest = {(p["name"], p["to"]) for p in state.pending}
+    if newest != {(p["name"], p["to"]) for p in saved.pending}:
+        log("raye-update: the update waiting for the next start now has the newest versions")
+    state.phase = "armed"
+    save_run(state)
+    return state
+
+
 def run_auto(state, command, now):
-    if state.phase == "armed" or (state.phase == "installing" and state.armed):
-        return 0                    # leave an armed set alone until it installs
+    if state.phase == "installing" and state.armed:
+        return 0                    # the install at start-up runs or was cut: leave it
+    if state.phase == "armed":
+        # the install at the next start takes the newest version, also one
+        # that came out after the person chose to restart
+        refresh_armed(state, now)
+        return 0
     if state.phase == "installing":
         if live_running():
             return 0
@@ -2630,6 +2798,15 @@ def main(argv):
         return live_ended()
     if command == "arm-if-split":
         return arm_if_split(time.time())
+    if command == "catch-up":
+        # what raye-update-catch-up.service runs as the PC stops, before
+        # the network goes: only then, never when an upgrade restarts it
+        if args not in ([], ["--stopping"]):
+            print("raye-update: catch-up [--stopping]", file=sys.stderr)
+            return 2
+        if args and not system_stopping():
+            return 0
+        return catch_up_before_restart(time.time())
     if command == "check-now":
         # Check for updates: pkexec waits for an admin password as long as it
         # takes, a polkit prompt behind systemctl gives up after 25 s
@@ -2640,7 +2817,53 @@ def main(argv):
         start_live(asked=True)
         return 0
     with locked():
-        return run_command(command, args, load(), time.time())
+        rc = run_command(command, args, load(), time.time())
+    if _RESTART_QUEUED:
+        # outside the lock: the look at the lists saves as it goes
+        asked = any(_RESTART_QUEUED)
+        _RESTART_QUEUED.clear()
+        catch_up_before_restart(time.time(), asked=asked)
+        power("restart")
+    return rc
+
+
+# "Restart now" and the restart Raye Update decides on queue the restart
+# here; main() first brings the waiting set to the newest, then restarts.
+_RESTART_QUEUED = []
+# a look right before a restart someone waits for: the lists in a minute,
+# the newest files in four, else the set as it is downloaded installs
+# (never an older file of a newer version: apt takes what its lists name)
+RESTART_LISTS_TIMEOUT = 60
+RESTART_DOWNLOAD_TIMEOUT = 240
+
+
+def restart_soon(asked=False):
+    """asked: a person pressed Restart now (a metered network does not
+    stop the look for a newer version then)."""
+    _RESTART_QUEUED.append(asked)
+
+
+def system_stopping():
+    """True while the PC shuts down or restarts."""
+    rc, out, _ = run(["systemctl", "is-system-running"], timeout=30)
+    return out.strip() == "stopping"
+
+
+def catch_up_before_restart(now, asked=False):
+    """The set armed for the next start, brought to the newest version just
+    before the PC restarts (refresh_armed, with a short time limit). A
+    check this recent is not read again."""
+    state = load()
+    if not state.armed or state.phase != "armed" or offline_owner() != "raye":
+        return 0
+    if now - (state.lastCheck or 0) < CATCH_UP_FRESH:
+        return 0
+    try:
+        refresh_armed(state, now, lists_timeout=RESTART_LISTS_TIMEOUT,
+                      download_timeout=RESTART_DOWNLOAD_TIMEOUT, asked=asked)
+    except Exception as e:      # never in the way of the restart
+        log(f"raye-update: the waiting set could not be looked at again: {e}")
+    return 0
 
 
 def arm_if_split(now, link=None, target=None):
@@ -2729,7 +2952,7 @@ def run_command(command, args, state, now):
             return 4
         save(state)
         if right_now:
-            power("restart")        # the install runs at start-up, then "then" applies
+            restart_soon(asked=True)   # the install runs at start-up, then "then" applies
         return 0
     if command == "disarm":
         disarm(state)
@@ -2765,7 +2988,7 @@ def run_command(command, args, state, now):
         if state.armed:
             state.armed["at"] = 0
         save(state)
-        power("restart")
+        restart_soon()
         return 0
     if command == "install-offline":
         then = install_offline(state)

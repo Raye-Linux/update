@@ -141,12 +141,29 @@ def test_auto_runs_again_once_the_pause_is_over(paths, monkeypatch):
     assert ru.load().pausedUntil == 0
 
 
-def test_auto_leaves_an_armed_set_alone(paths, monkeypatch):
+def test_auto_brings_an_armed_set_to_the_newest_and_keeps_it_armed(paths, monkeypatch):
+    """The owner's rule (2026-11-20): a set waiting for the next start is
+    replaced by the newest version; it stays armed (test_always_latest.py)."""
     ru.save(ru.State(phase="armed", readyId="x", armed={"then": "restart", "at": 0}))
     monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(ru, "check", lambda s, now=None: (_ for _ in ()).throw(AssertionError()))
+    called = []
+
+    def fake_check(s, now=None, **kw):
+        called.append(kw)
+        s.phase = "idle"
+        return s
+    monkeypatch.setattr(ru, "check", fake_check)
     assert ru.main(["raye-update", "auto"]) == 0
-    assert ru.load().phase == "armed"
+    assert len(called) == 1 and called[0].get("firmware") is False
+    assert ru.load().phase == "armed" and ru.load().armed == {"then": "restart", "at": 0}
+
+
+def test_auto_leaves_the_start_up_install_alone_while_it_runs(paths, monkeypatch):
+    ru.save(ru.State(phase="installing", readyId="x", armed={"then": "restart", "at": 0}))
+    monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(ru, "check", lambda *a, **k: (_ for _ in ()).throw(AssertionError()))
+    assert ru.main(["raye-update", "auto"]) == 0
+    assert ru.load().phase == "installing"
 
 
 def test_a_long_run_never_undoes_what_a_person_set_meanwhile(paths, monkeypatch):

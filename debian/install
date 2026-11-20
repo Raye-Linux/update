@@ -7,6 +7,7 @@ data/raye-update-live@.service usr/lib/systemd/system
 data/raye-update-restart.service usr/lib/systemd/system
 data/raye-update-restart.timer usr/lib/systemd/system
 data/raye-update-shutdown-screen.service usr/lib/systemd/system
+data/raye-update-catch-up.service usr/lib/systemd/system
 data/raye-update-notify.path usr/lib/systemd/user
 data/raye-update-notify.service usr/lib/systemd/user
 data/raye-update-progress.path usr/lib/systemd/user

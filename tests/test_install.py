@@ -111,6 +111,9 @@ def offline(paths, no_tools, monkeypatch):
     monkeypatch.setattr(ru, "install_packages", fake_install)
     monkeypatch.setattr(ru, "remove_obsolete", lambda: False)   # test_obsolete.py
     monkeypatch.setattr(ru, "still_pending", lambda pending: [])   # test_held.py
+    # what apt takes from the cache (test_always_latest.py): the set itself
+    rec["plan"] = []
+    monkeypatch.setattr(ru, "cached_set_plan", lambda: rec["plan"])
     monkeypatch.setattr(ru, "dpkg_half_configured", lambda: rec["dpkg_broken"][0])
     monkeypatch.setattr(ru, "install_firmware",
                         lambda fw: rec["fw"].append(len(fw)) or rec.get("fw_ok", True))
@@ -211,6 +214,18 @@ def test_install_offline_suspends_the_tpm_for_a_new_dbx_package(paths, offline):
     ru.arm(st, "restart")
     ru.install_offline(st, now=1.0)
     assert ["/usr/libexec/raye-tpm", "suspend"] in offline["run"]
+
+
+def test_the_tpm_is_suspended_for_a_shim_the_lists_brought_since(paths, offline):
+    """The lists were read again after the set was saved (the newest
+    version taken while it waited): the shim is not in the saved set, but
+    apt installs it, and the TPM must know before."""
+    st = ready_state()
+    ru.arm(st, "restart")
+    offline["plan"] = [{"name": "shim-signed", "from": "1", "to": "2", "origin": "",
+                        "kind": "system"}]
+    ru.install_offline(st, now=1.0)
+    assert offline["run"] == [["/usr/libexec/raye-tpm", "suspend"]]
 
 
 def test_tpm_suspend_ignores_the_arch_suffix(paths, offline):

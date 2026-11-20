@@ -14,6 +14,10 @@ override_dh_installsystemd:
 	dh_installsystemd --name=raye-update-restart raye-update-restart.timer
 	dh_installsystemd --name=raye-update-restart --no-enable --no-start raye-update-restart.service
 	dh_installsystemd --name=raye-update-shutdown-screen --no-start raye-update-shutdown-screen.service
+	# started at install so its ExecStop runs at the next shutdown; never
+	# stopped or restarted by an upgrade (catch-up --stopping does nothing
+	# then anyway)
+	dh_installsystemd --name=raye-update-catch-up --no-stop-on-upgrade --no-restart-after-upgrade raye-update-catch-up.service
 	# runs only at start-up in system-update.target, never started by hand
 	# and never stopped by an upgrade of this package: that would kill the
 	# install it is part of

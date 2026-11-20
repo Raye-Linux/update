@@ -159,6 +159,26 @@ Nothing apt holds back is an error, and none of it is offered: it is not in
   since (a phase that reached everyone, a newer version) waits for the next
   round. Without `--fix-missing` apt refuses the whole install as soon as
   one file is missing.
+- **Always the newest version (1.0).** A PC that skipped a version takes
+  the newest one directly. When a newer version comes out after the check,
+  what waits is replaced by it, and no older file is ever installed in its
+  place: apt installs only the version its lists name, so the lists are
+  read again at each step that comes after a wait:
+  - right before an install in use (unless the check that started it is
+    less than 5 minutes old), and what came out since is downloaded first;
+  - when a download meets a file the archive replaced (a 404), once;
+  - while a set waits for the next start: at each check of the timer, right
+    before a restart Raye Update starts (`arm --now`, `restart-due`), and as
+    the PC stops (`raye-update-catch-up.service`, before the network goes),
+    with a short time limit;
+  - never at start-up: there is no network there.
+  When the lists could not be read, the download installs (it is the newest
+  the PC knows). When a newer version could not be downloaded, that package
+  waits for the next round, and a Raye source of which only part of the
+  newest version is downloaded waits whole, at start-up too. One exception:
+  a Raye source an older Raye Update installed in part (0.5 to 1.0 Beta) is
+  finished first with what is downloaded, the sign-in screen depends on it.
+  `tests/test_always_latest.py` checks it against the real apt.
 
 `tests/test_real_apt.py` checks the four against the real apt.
 
@@ -291,6 +311,7 @@ for an administrator's password otherwise.
 | `install-now` | Settings "Install" (through pkexec) | starts `raye-update-live@now.service` |
 | `check-now` | Settings "Check for updates" (through pkexec) | starts `raye-update.service` |
 | `install-live auto\|now` | `raye-update-live@.service` | installs in use what needs no restart |
+| `catch-up --stopping` | `raye-update-catch-up.service` as the PC stops | brings the armed set to the newest version; nothing unless the PC is stopping |
 
 `arm` only arms; it does not restart. A session then asks Plasma to
 restart (so apps get to save their work): after `arm --then shutdown` the

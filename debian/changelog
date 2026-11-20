@@ -2,6 +2,13 @@ raye-update (1.0~beta2) resolute; urgency=medium
 
   * PCs on the Raye kernel get its new versions with the other updates;
     older kernels are removed, the newest two kept.
+  * An update always ends on the newest version: a version that came out
+    after the check, during the download, or while the update waited for
+    the next start replaces the one that was waiting, and an older file is
+    never installed in its place. The lists are read again right before an
+    install, before a restart, and as the PC shuts down.
+  * Raye's packages built together still wait together when only part of
+    their newest version could be downloaded, also at start-up.
 
  -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 19 Nov 2026 19:00:00 +0000
 
