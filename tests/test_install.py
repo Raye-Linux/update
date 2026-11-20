@@ -101,7 +101,7 @@ def offline(paths, no_tools, monkeypatch):
     """An armed set and fake tools; returns the record of what ran."""
     rec = {"dpkg_broken": [False], "apt": [], "fw": [], "plymouth": no_tools["plymouth"]}
 
-    def fake_install(on_percent):
+    def fake_install(on_percent, **kw):
         rec["apt"].append("install")
         for line in fixture("apt-status-install.txt").splitlines():
             kind, _, pct, _ = ru.parse_status(line)
@@ -523,7 +523,7 @@ def test_a_changed_boot_file_restarts(paths, offline, monkeypatch, name):
     boot_file(paths, name, "old")
     real = ru.install_packages
 
-    def install_and_touch(on_percent):
+    def install_and_touch(on_percent, **kw):
         boot_file(paths, name, "new, longer")
         return real(on_percent)
     monkeypatch.setattr(ru, "install_packages", install_and_touch)
@@ -535,7 +535,7 @@ def test_a_changed_boot_file_restarts(paths, offline, monkeypatch, name):
 def test_a_new_boot_file_restarts(paths, offline, monkeypatch):
     real = ru.install_packages
 
-    def install_and_add(on_percent):
+    def install_and_add(on_percent, **kw):
         boot_file(paths, "initrd.img-7.0.0-12-generic")
         return real(on_percent)
     monkeypatch.setattr(ru, "install_packages", install_and_add)
@@ -658,7 +658,7 @@ def snapper(offline, tmp_path, monkeypatch):
             return 0, "42\n", ""
         return 0, "", ""
 
-    def fake_install(on_percent):
+    def fake_install(on_percent, **kw):
         seen["env"].append(ru.APT_ENV.get("DISABLE_APT_SNAPSHOT"))
         return offline.get("apt_ok", True), ""
     monkeypatch.setattr(ru, "run", fake_run)

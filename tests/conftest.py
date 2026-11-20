@@ -17,6 +17,8 @@ def quiet_check(monkeypatch):
     monkeypatch.setattr(ru, "CHECK_PROGRESS", False)
     # the machine running the tests may have a Raye kernel of its own
     monkeypatch.setattr(ru, "FOLLOW_RAYE_KERNEL", False)
+    # never the console of the machine running the tests
+    monkeypatch.setattr(ru, "TEXT_TTY", os.devnull)
 
 
 def fixture(name):
@@ -53,4 +55,6 @@ def no_tools(monkeypatch):
     calls = {"plymouth": [], "power": [], "run": []}
     monkeypatch.setattr(ru, "plymouth", lambda *a: calls["plymouth"].append(a))
     monkeypatch.setattr(ru, "power", lambda then: calls["power"].append(then))
+    # the boot screen is up: nothing is written to the console of the test machine
+    monkeypatch.setattr(ru, "plymouth_running", lambda: True)
     return calls

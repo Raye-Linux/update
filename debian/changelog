@@ -12,6 +12,15 @@ raye-update (1.0~beta2) resolute; urgency=medium
   * An update waiting for the restart is set again as the PC stops when
     PackageKit took it away after a look at the lists: it installs instead
     of the PC starting normally with nothing installed.
+  * Check for updates always gives an answer: a check already running is
+    joined, and while another install holds the package manager (the first
+    start of a new system) the check waits for it, still saying Checking,
+    instead of waiting six hours for the next one. The folder Settings
+    watches is there from the install on.
+  * The update at start-up says when a step takes a few minutes (the new
+    version of the system being prepared), and on a PC that starts without
+    the boot screen it shows its progress in plain text instead of a black
+    screen.
 
  -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 19 Nov 2026 19:00:00 +0000
 

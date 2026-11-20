@@ -397,7 +397,7 @@ def test_the_start_up_install_counts_what_it_left(paths, no_tools, monkeypatch):
                   readyId=ru.ready_key(pending, []), needsRestart=True)
     ru.arm(st, "restart")
     ru.save(st)
-    monkeypatch.setattr(ru, "install_packages", lambda cb: (True, ""))
+    monkeypatch.setattr(ru, "install_packages", lambda cb, **kw: (True, ""))
     monkeypatch.setattr(ru, "remove_obsolete", lambda: False)
     monkeypatch.setattr(ru, "dpkg_half_configured", lambda: False)
     # firefox's file was gone: apt still offers it after the install

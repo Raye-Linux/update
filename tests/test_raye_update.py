@@ -120,7 +120,7 @@ def test_auto_does_nothing_while_paused(paths, monkeypatch):
     ru.save(ru.State(pausedUntil=9e12))
     monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
     called = []
-    monkeypatch.setattr(ru, "check", lambda s, now=None: called.append("check") or s)
+    monkeypatch.setattr(ru, "check", lambda s, now=None, **kw: called.append("check") or s)
     assert ru.main(["raye-update", "auto"]) == 0
     assert called == []
     assert ru.load().phase == "paused"
@@ -131,7 +131,7 @@ def test_auto_runs_again_once_the_pause_is_over(paths, monkeypatch):
     monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
     called = []
 
-    def fake_check(s, now=None):
+    def fake_check(s, now=None, **kw):
         called.append("check")
         s.phase = "idle"
         return s
@@ -171,7 +171,7 @@ def test_a_long_run_never_undoes_what_a_person_set_meanwhile(paths, monkeypatch)
     ru.save(ru.State())
     monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
 
-    def slow_check(s, now=None):
+    def slow_check(s, now=None, **kw):
         # someone picks "Update and restart" and active hours while the check runs
         disk = ru.load()
         disk.phase, disk.readyId = "armed", "abc"
@@ -192,7 +192,7 @@ def test_a_pause_set_during_a_run_wins(paths, monkeypatch):
     ru.save(ru.State())
     monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
 
-    def check_then_pause(s, now=None):
+    def check_then_pause(s, now=None, **kw):
         disk = ru.load()
         ru.pause(disk, 1)
         ru.save(disk)

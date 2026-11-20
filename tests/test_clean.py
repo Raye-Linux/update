@@ -65,7 +65,7 @@ def test_no_cache_folder_is_not_an_error(paths):
 def test_cache_emptied_after_the_install_at_start_up(paths, offline, cache, monkeypatch):
     seen = []
     install = ru.install_packages
-    monkeypatch.setattr(ru, "install_packages", lambda on: (seen.append(debs(cache)), install(on))[1])
+    monkeypatch.setattr(ru, "install_packages", lambda on, **kw: (seen.append(debs(cache)), install(on))[1])
     st = ready_state()
     ru.arm(st, "restart")
     ru.install_offline(st, now=1.0)

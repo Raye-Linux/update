@@ -105,6 +105,11 @@ OFFLINE_SOURCES = re.compile(
 # the pins of each install in use, and of each simulation of one, go to a
 # file of their own in here; apt reads it as its preferences
 PINS_DIR = "/run/raye-update"
+# "Check for updates" was pressed: the check that runs next is a person's
+CHECK_ASKED = "/run/raye-update/check-asked"
+# how long a person's check waits for an apt lock another install holds
+ASKED_LOCK_WAIT = 600
+ASKED_LOCK_NAP = 10
 LIVE_LOCK = "/run/raye-update/live.lock"
 BOOT_DIR = "/boot"
 MAX_FIRMWARE_BYTES = 256 << 20
@@ -1056,6 +1061,91 @@ def plymouth(*args):
         pass
 
 
+def plymouth_running():
+    """The boot screen is up. Not on level 1 of the graphics ladder
+    (plymouth.enable=0), nor when plymouthd died."""
+    try:
+        return subprocess.run(["plymouth", "--ping"], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+# Steps that hold apt's number for minutes: the start-up image rebuilt for
+# each kernel, a driver built for it, the boot menu written again.
+_SLOW_ITEM = re.compile(r"^(initramfs-tools|linux-(image|headers|modules|signed)|raye-kernel|"
+                        r"[\w.+-]*dkms|grub|shim-signed|raye-system)")
+
+
+def slow_item(item):
+    return bool(_SLOW_ITEM.match((item or "").split(":", 1)[0]))
+
+
+# the console of the start-up, when there is no boot screen to draw on
+TEXT_TTY = "/dev/tty1"
+LOCALE_FILES = ("/etc/default/locale", "/etc/locale.conf")
+TEXT_WORDS = {
+    "en": {"updates": "Working on updates  {n}%", "note": "Don't turn off your PC",
+           "slow": "Preparing the new version of the system. This can take a few minutes."},
+    "fr": {"updates": "Mise à jour en cours  {n}%", "note": "N'éteignez pas votre PC",
+           "slow": "Préparation de la nouvelle version du système. "
+                   "Cela peut prendre quelques minutes."},
+}
+
+
+def system_language(files=None):
+    for path in files or LOCALE_FILES:
+        try:
+            with open(path) as f:
+                for line in f:
+                    m = re.match(r'\s*LANG\s*=\s*"?([a-z]{2})', line)
+                    if m:
+                        return m.group(1) if m.group(1) in TEXT_WORDS else "en"
+        except OSError:
+            continue
+    return "en"
+
+
+class OfflineScreen:
+    """What the install at start-up shows: the boot screen's words through
+    plymouth, or the same words on the console when there is no boot screen
+    (level 1 of the graphics ladder): a quiet start with the cursor off left
+    the console blank for the whole install."""
+
+    def __init__(self):
+        self.text = not plymouth_running()
+        self.words = TEXT_WORDS[system_language()] if self.text else None
+        self.percent = 0
+        self.slow = False
+
+    def progress(self, pct):
+        self.percent = int(pct)
+        plymouth("system-update", f"--progress={self.percent}")
+        self.draw()
+
+    def item(self, item):
+        self.set_slow(slow_item(item))
+
+    def set_slow(self, on):
+        if on == self.slow:
+            return
+        self.slow = on
+        plymouth("display-message", "--text=raye:slow-step" if on else "--text=raye:slow-step-done")
+        self.draw()
+
+    def draw(self):
+        if not self.text:
+            return
+        w = self.words
+        body = "\033[H\033[2J\n\n    " + w["updates"].format(n=self.percent) + "\n\n    " \
+            + (w["slow"] if self.slow else w["note"]) + "\n"
+        try:
+            with open(TEXT_TTY, "a") as f:     # a tty: "a" or "w" alike
+                f.write(body)
+        except OSError:
+            pass                    # never in the way of the install
+
+
 def power(then):
     """Restart or turn off the machine. --no-block: the reboot stops the unit
     that called it, which must be allowed to end first."""
@@ -1422,10 +1512,28 @@ def settle(state, pending, firmware, cached=False):
 CHECK_PROGRESS = True
 
 
-def check(state, now=None, lists_timeout=3600, firmware=True):
+def nap(seconds):
+    time.sleep(seconds)
+
+
+def take_check_asked(now=None):
+    """True once after "Check for updates" was pressed (check-now): the mark
+    is used up. A mark older than a person would wait is not trusted."""
+    try:
+        age = (time.time() if now is None else now) - os.stat(CHECK_ASKED).st_mtime
+        os.unlink(CHECK_ASKED)
+    except OSError:
+        return False
+    return age < ASKED_LOCK_WAIT + 3600
+
+
+def check(state, now=None, lists_timeout=3600, firmware=True, asked=False):
     """Read the lists and work out the pending set. firmware=False keeps the
     firmware already known (a look right before an install or a restart:
-    fwupd can take minutes and has nothing to do with apt's versions)."""
+    fwupd can take minutes and has nothing to do with apt's versions).
+    asked: a person pressed "Check for updates" and watches the page: an apt
+    lock another install holds (a fresh system's first start) is waited for,
+    still "Checking", instead of "Waiting" until the timer comes back."""
     state.phase, state.waitReason, state.error = "checking", "", None
     state.checkPercent = 0
     save_run(state)
@@ -1434,6 +1542,11 @@ def check(state, now=None, lists_timeout=3600, firmware=True):
         save_run(state)
     try:
         pending, broken, err = list_updates(show if CHECK_PROGRESS else None, lists_timeout)
+        waited = 0
+        while asked and pending is None and is_lock_error(err) and waited < ASKED_LOCK_WAIT:
+            nap(ASKED_LOCK_NAP)
+            waited += ASKED_LOCK_NAP
+            pending, broken, err = list_updates(show if CHECK_PROGRESS else None, lists_timeout)
     finally:
         state.checkPercent = 0
     if pending is None and not is_lock_error(err) and dpkg_half_configured():
@@ -2278,13 +2391,18 @@ def still_pending(pending):
     return [p for p in pending if (p["name"], p["to"]) in left]
 
 
-def install_packages(on_percent, followups=None):
-    """Install the downloaded set. (ok, output tail)."""
+def install_packages(on_percent, followups=None, on_item=None):
+    """Install the downloaded set. (ok, output tail). on_item gets the
+    package (or trigger) apt works on, each time it changes."""
     last = []
+    current = [None]
 
     # apt says the same whole number many times; each one costs a call to
     # plymouth, and they pile up behind a slow screen
     def on_status(kind, item, percent, msg):
+        if kind == "pmstatus" and on_item is not None and item != current[0]:
+            current[0] = item
+            on_item(item)
         if kind == "pmstatus" and int(percent) not in last[-1:]:
             last.append(int(percent))
             on_percent(int(percent))
@@ -2534,9 +2652,12 @@ def install_offline(state, now=None, link=None, target=None):
     # from the disk, where it is the English fallback, not the words of
     # the language the initramfs drew in
     plymouth("display-message", "--text=raye:mode:updates")
-    plymouth("system-update", "--progress=0")
+    screen = OfflineScreen()
+    screen.progress(0)
     if interrupted or dpkg_half_configured():
         plymouth("display-message", "--text=raye:finishing-updates")
+    # the TPM, the restore point and dpkg's own repair hold the 0 a while
+    screen.set_slow(True)
     coming = {p["name"] for p in state.pending} | {p["name"] for p in cached_set_plan()}
     if any(BOOT_CHAIN.match(n.split(":", 1)[0]) for n in coming):
         # a new shim, GRUB or dbx can change PCR 7 in ways raye-tpm cannot predict:
@@ -2551,7 +2672,7 @@ def install_offline(state, now=None, link=None, target=None):
     if point:
         APT_ENV["DISABLE_APT_SNAPSHOT"] = "yes"
     try:
-        ok, out = install_packages(lambda pct: plymouth("system-update", f"--progress={int(pct)}"))
+        ok, out = install_packages(screen.progress, on_item=screen.item)
         if ok:
             remove_obsolete()
     finally:
@@ -2583,7 +2704,8 @@ def install_offline(state, now=None, link=None, target=None):
         # not downloaded, or held back with something that was not: the next check offers them
         log("raye-update: left for the next round: " + ", ".join(p["name"] for p in skipped))
     clean_downloads()
-    plymouth("system-update", "--progress=100")
+    screen.set_slow(False)
+    screen.progress(100)
     action = after_install(state, then, before)
     _finish(state, ok=True, now=now, link=link, target=target, firmware=fw_count)
     if skipped:
@@ -2738,7 +2860,7 @@ def run_auto(state, command, now):
         return 0
     if state.pausedUntil:
         resume(state)               # the pause is over
-    state = check(state, now)
+    state = check(state, now, asked=take_check_asked())
     if command == "auto" and state.phase in ("idle", "ready") and (state.pending or state.firmware):
         # download what is new, or what was cleaned from the cache since
         if not state.readyId or (state.pending and bytes_to_download()) \
@@ -2828,7 +2950,15 @@ def main(argv):
         return catch_up_before_restart(time.time())
     if command == "check-now":
         # Check for updates: pkexec waits for an admin password as long as it
-        # takes, a polkit prompt behind systemctl gives up after 25 s
+        # takes, a polkit prompt behind systemctl gives up after 25 s. A
+        # check already running is joined (systemd merges the start); the
+        # mark makes the run a person's (check(asked=True))
+        try:
+            os.makedirs(os.path.dirname(CHECK_ASKED), exist_ok=True)
+            with open(CHECK_ASKED, "w") as f:
+                f.write(f"{time.time():.0f}\n")
+        except OSError:
+            pass
         run(["systemctl", "start", "--no-block", "raye-update.service"], timeout=60)
         return 0
     if command == "install-now":

@@ -78,7 +78,7 @@ def test_the_list_is_only_what_raye_put_there(name):
 def test_start_up_install_swaps_after_the_upgrade(paths, no_tools, monkeypatch):
     from test_install import ready_state
     order = []
-    monkeypatch.setattr(ru, "install_packages", lambda cb: order.append("upgrade") or (True, ""))
+    monkeypatch.setattr(ru, "install_packages", lambda cb, **kw: order.append("upgrade") or (True, ""))
     monkeypatch.setattr(ru, "remove_obsolete", lambda: order.append("obsolete") or True)
     monkeypatch.setattr(ru, "dpkg_half_configured", lambda: False)
     monkeypatch.setattr(ru, "run", lambda cmd, timeout=0: (0, "", ""))
@@ -91,7 +91,7 @@ def test_start_up_install_swaps_after_the_upgrade(paths, no_tools, monkeypatch):
 def test_no_swap_when_the_upgrade_failed(paths, no_tools, monkeypatch):
     from test_install import ready_state
     order = []
-    monkeypatch.setattr(ru, "install_packages", lambda cb: order.append("upgrade") or (False, "x"))
+    monkeypatch.setattr(ru, "install_packages", lambda cb, **kw: order.append("upgrade") or (False, "x"))
     monkeypatch.setattr(ru, "remove_obsolete", lambda: order.append("obsolete") or True)
     monkeypatch.setattr(ru, "dpkg_half_configured", lambda: False)
     monkeypatch.setattr(ru, "run", lambda cmd, timeout=0: (0, "", ""))
@@ -149,7 +149,7 @@ def test_left_over_swap_does_nothing_once_winehq_is_gone(monkeypatch, tmp_path):
 
 def test_the_timer_run_does_the_left_over_swap(paths, no_tools, monkeypatch):
     calls = []
-    monkeypatch.setattr(ru, "check", lambda st, now=None: st)
+    monkeypatch.setattr(ru, "check", lambda st, now=None, **kw: st)
     monkeypatch.setattr(ru, "live_running", lambda: False)
     monkeypatch.setattr(ru, "live_waiting", lambda st: False)
     monkeypatch.setattr(ru, "swap_left_over", lambda swap=True: calls.append(swap) or False)
