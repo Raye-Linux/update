@@ -72,7 +72,60 @@ def test_the_download_brings_the_replacement(monkeypatch):
 
 @pytest.mark.parametrize("name", [n for e in ru.OBSOLETE for n in e["remove"]])
 def test_the_list_is_only_what_raye_put_there(name):
-    assert name in WINEHQ
+    assert name in WINEHQ + ("synaptic",)
+
+
+# Synaptic came with the 1.0 Beta image; the Store does its work since
+# Beta 2. It goes from PCs that got it with the image, never from one where
+# a person installed it.
+
+@pytest.fixture
+def history(tmp_path, monkeypatch):
+    folder = tmp_path / "apt"
+    folder.mkdir()
+    monkeypatch.setattr(ru, "APT_HISTORY", str(folder))
+    return folder
+
+
+def test_synaptic_from_the_image_goes(monkeypatch, history):
+    (history / "history.log").write_text(
+        "Start-Date: 2026-11-19  10:00:00\nCommandline: apt-get upgrade\n"
+        "Upgrade: firefox:amd64 (160.0, 161.0), synaptic:amd64 (0.91.3, 0.91.4)\n"
+        "End-Date: 2026-11-19  10:01:00\n")
+    apt = Apt({"raye-desktop", "synaptic"}, removals=("synaptic",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == ["synaptic-"]
+    assert ru.remove_obsolete()
+    (cmd,) = apt.installs()
+    assert cmd[-1] == "synaptic-"
+
+
+def test_synaptic_a_person_installed_stays(monkeypatch, history):
+    (history / "history.log").write_text(
+        "Start-Date: 2026-11-19  10:00:00\nCommandline: apt install synaptic\n"
+        "Requested-By: sam (1000)\nInstall: synaptic:amd64 (0.91.3), libept1.7:amd64 (1.2.2, automatic)\n"
+        "End-Date: 2026-11-19  10:01:00\n")
+    apt = Apt({"raye-desktop", "synaptic"}, removals=("synaptic",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []
+    assert not ru.remove_obsolete()
+
+
+def test_synaptic_put_back_by_a_person_stays(monkeypatch, history):
+    import gzip
+    with gzip.open(history / "history.log.2.gz", "wt") as f:
+        f.write("Start-Date: 2026-11-19  10:00:00\nCommandline: apt reinstall synaptic\n"
+                "Reinstall: synaptic:amd64 (0.91.3)\nEnd-Date: 2026-11-19  10:01:00\n")
+    apt = Apt({"raye-desktop", "synaptic"}, removals=("synaptic",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []
+
+
+def test_unreadable_history_keeps_synaptic(monkeypatch, history):
+    (history / "history.log.1.gz").write_bytes(b"not gzip at all")
+    apt = Apt({"raye-desktop", "synaptic"}, removals=("synaptic",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []
 
 
 def test_start_up_install_swaps_after_the_upgrade(paths, no_tools, monkeypatch):

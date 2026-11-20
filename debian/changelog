@@ -21,6 +21,8 @@ raye-update (1.0~beta2) resolute; urgency=medium
     version of the system being prepared), and on a PC that starts without
     the boot screen it shows its progress in plain text instead of a black
     screen.
+  * Synaptic, which the 1.0 Beta image brought, is removed with the update;
+    a copy you installed yourself stays.
 
  -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 19 Nov 2026 19:00:00 +0000
 

@@ -166,7 +166,15 @@ OBSOLETE = (
     # 0.3 ran Windows programs on WineHQ's build; raye-wine took over in 0.5
     {"needs": "raye-wine", "add": ("raye-wine-compat",),
      "remove": ("winehq-stable", "wine-stable", "wine-stable-amd64", "wine-stable-i386")},
+    # the 1.0 Beta image brought Synaptic; the Store does its work since
+    # Beta 2. "image_only": a copy a person installed (apt's history names
+    # it) stays.
+    {"needs": "raye-desktop", "add": (), "remove": ("synaptic",), "image_only": True},
 )
+# apt's own record of what was installed and by which command; an image
+# ships it empty, so a package named in it was put there after the install
+APT_HISTORY = "/var/log/apt"
+_HISTORY_LINE = re.compile(r"^(Install|Reinstall): (.*)$")
 
 
 @dataclass
@@ -1233,9 +1241,42 @@ def obsolete_plan(coming=()):
         if entry["needs"] not in have and entry["needs"] not in coming:
             continue
         gone = [n for n in entry["remove"] if n in have]
+        if gone and entry.get("image_only"):
+            chosen = installed_by_a_person(gone)
+            gone = [n for n in gone if n not in chosen]
         if gone:
             args += [n for n in entry["add"] if n not in have] + [n + "-" for n in gone]
     return args
+
+
+def installed_by_a_person(names):
+    """The names among `names` that apt's history shows installed or put
+    back after the system was installed. A history that cannot be read
+    counts as naming them all: in doubt, nothing is removed."""
+    import gzip
+    found = set()
+    try:
+        files = sorted(f for f in os.listdir(APT_HISTORY) if f.startswith("history.log"))
+    except OSError:
+        return set(names)
+    for name in files:
+        path = os.path.join(APT_HISTORY, name)
+        try:
+            opener = gzip.open if name.endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8", errors="replace") as f:
+                lines = f.read().splitlines()
+        except (OSError, EOFError, ValueError):
+            return set(names)
+        for line in lines:
+            m = _HISTORY_LINE.match(line)
+            if not m:
+                continue
+            # "synaptic:amd64 (0.91.3), libept1.7:amd64 (1.2.2, automatic)"
+            for item in re.split(r"\),\s*", m.group(2)):
+                pkg = item.strip().split(" ", 1)[0].split(":", 1)[0]
+                if pkg in names:
+                    found.add(pkg)
+    return found
 
 
 def parse_removals(output):
