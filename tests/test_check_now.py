@@ -103,3 +103,12 @@ def test_the_package_ships_the_state_folder():
     dirs = open(os.path.join(here, "..", "debian", "raye-update.dirs")).read().split()
     assert "var/lib/raye-update" in dirs
     assert os.path.dirname(ru.STATE) == "/var/lib/raye-update"
+
+
+def test_raye_update_leaves_apps_to_the_store():
+    # system updates only (apt, firmware): Flatpak apps and the components
+    # they share update in the Raye Store, automatically or with its Get
+    # updates button. Two updaters for one app would fight over its files.
+    here = os.path.dirname(__file__)
+    code = open(os.path.join(here, "..", "src", "raye_update.py")).read()
+    assert '"flatpak"' not in code and "'flatpak'" not in code
