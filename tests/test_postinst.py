@@ -24,14 +24,16 @@ def run(tmp_path, *args, users=(("1000", "testr"),), socket_for=("1000",)):
     lines = "\n".join(f'[ "$2" = {uid} ] && echo {name}:x:{uid}:{uid}::/home/{name}:/bin/sh'
                       for uid, name in users)
     (bin_dir / "getent").write_text(f"#!/bin/sh\n{lines}\nexit 0\n")
-    for tool in ("systemctl", "getent"):
+    # its own record: the systemctl calls stay what the tests above compare
+    (bin_dir / "raye-update").write_text(f'#!/bin/sh\necho "$*" >> {tmp_path / "raye-calls"}\n')
+    for tool in ("systemctl", "getent", "raye-update"):
         (bin_dir / tool).chmod(0o755)
     script = tmp_path / "postinst"
     script.write_text(POSTINST.read_text().replace("#DEBHELPER#", ""))
     booted = tmp_path / "run-systemd-system"
     booted.mkdir()
     env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", RAYE_USER_RUNTIME=str(runtime),
-               RAYE_SYSTEMD_RUN=str(booted))
+               RAYE_SYSTEMD_RUN=str(booted), RAYE_UPDATE=str(bin_dir / "raye-update"))
     subprocess.run(["sh", str(script), *args], env=env, check=True, timeout=30)
     return calls.read_text().splitlines() if calls.exists() else []
 
@@ -59,3 +61,25 @@ def test_new_shutdown_screen_counts_for_the_next_restart(tmp_path):
 
 def test_only_on_configure(tmp_path):
     assert run(tmp_path, "abort-upgrade", "0.5~beta1") == []
+
+
+def test_upgrade_finishes_a_pc_an_older_raye_update_left_half_way(tmp_path):
+    run(tmp_path, "configure", "1.0~beta1")
+    assert (tmp_path / "raye-calls").read_text().splitlines() == ["arm-if-split"]
+
+
+def test_no_arm_if_split_outside_configure(tmp_path):
+    run(tmp_path, "abort-upgrade", "1.0~beta1")
+    assert not (tmp_path / "raye-calls").exists()
+
+
+def test_a_failing_arm_if_split_never_fails_the_install(tmp_path):
+    bin_dir = tmp_path / "bin2"
+    bin_dir.mkdir()
+    script = tmp_path / "postinst2"
+    script.write_text(POSTINST.read_text().replace("#DEBHELPER#", ""))
+    (bin_dir / "raye-update").write_text("#!/bin/sh\nexit 3\n")
+    (bin_dir / "raye-update").chmod(0o755)
+    env = dict(os.environ, RAYE_UPDATE=str(bin_dir / "raye-update"),
+               RAYE_USER_RUNTIME=str(tmp_path / "none"), RAYE_SYSTEMD_RUN=str(tmp_path / "none"))
+    assert subprocess.run(["sh", str(script), "configure"], env=env, timeout=30).returncode == 0

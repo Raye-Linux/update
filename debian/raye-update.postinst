@@ -7,6 +7,10 @@ set -e
 # this very install rewrites the state: reload each running user manager and
 # start the watches again, or the "Updates are ready" notice would not come.
 if [ "$1" = configure ]; then
+    # an older Raye Update that installed part of a Raye source in use (0.5
+    # to 1.0 Beta) left some PCs without a sign-in screen: the rest installs
+    # at their next start, whatever start that is. Never waits, never fails.
+    timeout 60 "${RAYE_UPDATE:-/usr/libexec/raye-update}" arm-if-split >/dev/null 2>&1 || true
     # debhelper reloads systemd before it enables raye-update-shutdown-screen:
     # one more, or the restart right after this upgrade does not run it
     if [ -d "${RAYE_SYSTEMD_RUN:-/run/systemd/system}" ]; then

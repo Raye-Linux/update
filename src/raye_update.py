@@ -394,13 +394,20 @@ def save(state, path=None):
 
 
 @contextlib.contextmanager
-def locked():
-    """Held while a command changes the file, so two writers never cross."""
+def locked(wait=True):
+    """Held while a command changes the file, so two writers never cross.
+    wait=False: yields False at once when someone else holds it."""
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     fd = os.open(os.path.join(os.path.dirname(STATE), ".lock"), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if wait else fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            if wait:
+                raise
+            yield False
+            return
+        yield True
     finally:
         os.close(fd)
 
@@ -1547,7 +1554,9 @@ def package_sources(names):
     does not know are left out."""
     if not names:
         return {}
-    _, out, _ = run(["apt-cache", "show", "--no-all-versions", *sorted(names)], timeout=120)
+    # the options after the names: the same apt the simulations ask
+    _, out, _ = run(["apt-cache", "show", "--no-all-versions", *sorted(names), *APT_OPTS],
+                    timeout=120)
     sources = {}
     for para in (out or "").split("\n\n"):
         name = source = ""
@@ -1570,6 +1579,129 @@ def offline_names(pending):
     offline |= {p["name"] for p in pending
                 if OFFLINE_SOURCES.match(sources.get(base(p["name"]), ""))}
     return offline
+
+
+DPKG_STATUS = "/var/lib/dpkg/status"
+
+
+def is_raye(p):
+    """An update from the Raye archive."""
+    return p.get("origin", "").startswith("Raye:")
+
+
+def _base(name):
+    return name.split(":", 1)[0]
+
+
+def kept_back(output):
+    """Names apt keeps back, from the text of an upgrade simulation."""
+    names, inside = [], False
+    for line in output.splitlines():
+        if line.startswith("The following packages have been kept back"):
+            inside = True
+            continue
+        if inside:
+            if line.startswith(" "):
+                names += line.split()
+            else:
+                inside = False
+    return names
+
+
+def whole_raye_sources(pending, offline, cached=False):
+    """`offline`, and with it every other update of the Raye archive built
+    from the same source as one that cannot install now (it needs a
+    restart, or apt keeps it back). Raye's binary packages of one source
+    are made to work together: raye-desktop 1.0 named a helper that only
+    raye-system 1.0 has, and taking the first without the second left a
+    PC without a sign-in screen (2026-11-19). Ubuntu's packages are left
+    as they are, phasing and all."""
+    offline = set(offline)
+    raye = {_base(p["name"]) for p in pending if is_raye(p)}
+    if not raye:
+        return offline
+    sources = package_sources(raye)
+    for _ in range(4):
+        waiting = {sources[_base(p["name"])] for p in pending
+                   if p["name"] in offline and _base(p["name"]) in sources}
+        try:
+            with pins_file(pending, offline) as pins:
+                rc, out, _ = run(["apt-get", "-s", *APT_OPTS, *pins,
+                                  *(FROM_CACHE if cached else ()), *UPGRADE])
+        except OSError:
+            return offline
+        if rc != 0:
+            return offline          # live_set finds nothing either
+        moving = {p["name"] for p in parse_simulation(out)}
+        waiting |= {sources[_base(p["name"])] for p in pending
+                    if p["name"] not in moving and _base(p["name"]) in sources}
+        back = [n for n in kept_back(out) if _base(n) not in sources]
+        if back:
+            waiting |= {s for s in package_sources({_base(n) for n in back}).values()
+                        if s in sources.values()}
+        more = {p["name"] for p in pending
+                if sources.get(_base(p["name"])) in waiting} - offline
+        if not more:
+            return offline
+        offline |= more
+    return offline
+
+
+def dpkg_installed(path=None):
+    """name -> (version, source, source version) of what dpkg has installed."""
+    try:
+        with open(path or DPKG_STATUS) as f:
+            text = f.read()
+    except OSError:
+        return {}
+    found = {}
+    for para in text.split("\n\n"):
+        fields = {}
+        for line in para.splitlines():
+            if line and not line[0].isspace() and ":" in line:
+                key, _, value = line.partition(":")
+                fields[key] = value.strip()
+        name, status = fields.get("Package"), fields.get("Status", "")
+        if not name or not status.endswith(" installed") or name in found:
+            continue
+        version = fields.get("Version", "")
+        source, _, rest = fields.get("Source", name).partition(" ")
+        source_version = rest.strip("() ") or version
+        found[name] = (version, source, source_version)
+    return found
+
+
+def split_raye_sources(pending, installed=None):
+    """Raye sources installed at two versions at once: one of their
+    packages newer than another one that waits for a restart. Only an
+    install in use that took part of a source does that (the Raye Update of
+    0.5 did, on the way to 1.0 Beta). A package an older version left
+    behind (older than the rest) does not count."""
+    installed = dpkg_installed() if installed is None else installed
+    split = set()
+    for p in pending:
+        if not is_raye(p) or not p.get("restart", True):
+            continue
+        mine = installed.get(_base(p["name"]))
+        if not mine:
+            continue
+        for name, (_version, source, source_version) in installed.items():
+            if source == mine[1] and name != _base(p["name"]) \
+                    and version_newer(source_version, mine[2]):
+                split.add(source)
+    return split
+
+
+def version_newer(a, b):
+    """True when Debian version a is newer than b (dpkg's own comparison)."""
+    if a == b:
+        return False
+    try:
+        return subprocess.run(["dpkg", "--compare-versions", a, "gt", b],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def live_pins(pending, base="/etc/apt/preferences", offline=None):
@@ -1616,7 +1748,7 @@ def live_set(pending, pins=None, offline=None, cached=False):
     Empty when that cannot be worked out. `cached`: only from what is
     downloaded, as the install itself does; a check plans with everything."""
     if offline is None:
-        offline = offline_names(pending)
+        offline = whole_raye_sources(pending, offline_names(pending), cached)
     if all(p["name"] in offline for p in pending):
         return set()
     if pins is None:
@@ -1695,7 +1827,7 @@ def install_live(state, asked=False, gaming=None, now=None):
     if dpkg_half_configured():
         # an install cut short: apt cannot work anything out before this
         repair_dpkg()
-    offline = offline_names(state.pending)
+    offline = whole_raye_sources(state.pending, offline_names(state.pending), cached=True)
     with pins_file(state.pending, offline) as pins:
         # the install reads the very file its simulation read
         return _install_live(state, pins, offline, now)
@@ -2428,6 +2560,18 @@ def run_auto(state, command, now):
     if command == "auto" and state.phase in ("idle", "ready") and not live_running():
         if swap_left_over(swap=not state.needsRestart):
             log("raye-update: WineHQ's packages replaced by raye-wine-compat")
+    if command == "auto" and state.phase == "ready" and state.readyId and not state.armed:
+        split = split_raye_sources(state.pending)
+        if split:
+            # a PC an earlier install in use left half way (0.5 to 1.0 Beta):
+            # the rest must not wait for a restart someone asks for, the
+            # sign-in screen may be gone. Any next start finishes it.
+            log("raye-update: " + ", ".join(sorted(split))
+                + " installed in part, the rest installs at the next start")
+            save_run(state)
+            with locked():
+                if not load().armed and arm(state, "restart", 0, now) == 0:
+                    save(state)
     save_run(state)
     if command == "auto" and live_waiting(state):
         start_live()
@@ -2484,6 +2628,8 @@ def main(argv):
         return run_live(args, time.time())
     if command == "live-ended":
         return live_ended()
+    if command == "arm-if-split":
+        return arm_if_split(time.time())
     if command == "check-now":
         # Check for updates: pkexec waits for an admin password as long as it
         # takes, a polkit prompt behind systemctl gives up after 25 s
@@ -2495,6 +2641,28 @@ def main(argv):
         return 0
     with locked():
         return run_command(command, args, load(), time.time())
+
+
+def arm_if_split(now, link=None, target=None):
+    """`arm-if-split`, from raye-update's postinst: a PC an older Raye Update
+    left with a Raye source installed in part (0.5 to 1.0 Beta: raye-desktop
+    1.0 and raye-system 0.5, no sign-in screen) finishes at its next start,
+    whatever start that is. Never waits: the install at start-up holds the
+    state while it runs, and its dpkg runs this very script."""
+    if offline_owner(link, target) is not None:
+        return 0                    # an install at start-up is set or running
+    with locked(wait=False) as mine:
+        if not mine:
+            return 0
+        state = load()
+        if not state.readyId or state.armed:
+            return 0
+        split = split_raye_sources(state.pending)
+        if split and arm(state, "restart", 0, now, link, target) == 0:
+            log("raye-update: " + ", ".join(sorted(split))
+                + " installed in part, the rest installs at the next start")
+            save(state)
+    return 0
 
 
 def run_live(args, now):
