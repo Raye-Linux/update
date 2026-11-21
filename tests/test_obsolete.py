@@ -72,7 +72,7 @@ def test_the_download_brings_the_replacement(monkeypatch):
 
 @pytest.mark.parametrize("name", [n for e in ru.OBSOLETE for n in e["remove"]])
 def test_the_list_is_only_what_raye_put_there(name):
-    assert name in WINEHQ + ("synaptic",)
+    assert name in WINEHQ + ("synaptic", "qsynth")
 
 
 # Synaptic came with the 1.0 Beta image; the Store does its work since
@@ -212,3 +212,50 @@ def test_the_timer_run_does_the_left_over_swap(paths, no_tools, monkeypatch):
     st.needsRestart = True
     ru.run_auto(st, "auto", 0)
     assert calls == [True, False]
+
+
+# Qsynth: fluidsynth (Raye Synth, Beta 2) recommends it, so Raye Update's
+# upgrade put it there with fluidsynth. Raye Synth needs no window, and
+# Qsynth's own starts on JACK, which Raye does not run: it goes from PCs
+# where Raye brought it, never from one where a person chose it.
+
+def test_qsynth_raye_brought_goes(monkeypatch, history):
+    (history / "history.log").write_text(
+        "Start-Date: 2026-11-21  03:00:00\nCommandline: apt-get -q upgrade --with-new-pkgs\n"
+        "Install: fluidsynth:amd64 (2.4.8+dfsg-1, automatic), qsynth:amd64 (1.0.3-1, automatic)\n"
+        "Upgrade: raye-desktop:amd64 (0.9, 1.0)\nEnd-Date: 2026-11-21  03:05:00\n")
+    apt = Apt({"raye-desktop", "qsynth"}, removals=("qsynth",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == ["qsynth-"]
+    assert ru.remove_obsolete()
+    (cmd,) = apt.installs()
+    assert cmd[-1] == "qsynth-"
+
+
+def test_qsynth_a_person_installed_stays(monkeypatch, history):
+    (history / "history.log").write_text(
+        "Start-Date: 2026-11-21  03:00:00\nCommandline: apt-get -q upgrade --with-new-pkgs\n"
+        "Install: fluidsynth:amd64 (2.4.8+dfsg-1, automatic), qsynth:amd64 (1.0.3-1, automatic)\n"
+        "End-Date: 2026-11-21  03:05:00\n\n"
+        "Start-Date: 2026-11-22  10:00:00\nCommandline: apt install qsynth\nRequested-By: sam (1000)\n"
+        "Install: qsynth:amd64 (1.0.3-1)\nEnd-Date: 2026-11-22  10:00:05\n")
+    apt = Apt({"raye-desktop", "qsynth"}, removals=("qsynth",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []
+
+
+def test_qsynth_pulled_by_a_persons_own_install_stays(monkeypatch, history):
+    # a person installed something that brought it: their choice, not Raye's
+    (history / "history.log").write_text(
+        "Start-Date: 2026-11-22  10:00:00\nCommandline: apt install fluidsynth\nRequested-By: sam (1000)\n"
+        "Install: qsynth:amd64 (1.0.3-1, automatic)\nEnd-Date: 2026-11-22  10:00:05\n")
+    apt = Apt({"raye-desktop", "qsynth"}, removals=("qsynth",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []
+
+
+def test_qsynth_with_no_record_stays(monkeypatch, history):
+    # nothing says Raye brought it (an image never had it)
+    apt = Apt({"raye-desktop", "qsynth"}, removals=("qsynth",))
+    monkeypatch.setattr(ru, "run", apt.run)
+    assert ru.obsolete_plan() == []

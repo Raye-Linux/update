@@ -170,6 +170,12 @@ OBSOLETE = (
     # Beta 2. "image_only": a copy a person installed (apt's history names
     # it) stays.
     {"needs": "raye-desktop", "add": (), "remove": ("synaptic",), "image_only": True},
+    # Raye Synth (Beta 2) brought fluidsynth, which recommends Qsynth: an
+    # upgrade put it in too. Raye Synth needs no window, and Qsynth's own
+    # starts on JACK, which Raye does not run. "raye_brought": it goes only
+    # when apt's history shows Raye Update put it there, never when a person
+    # installed it or something that brought it.
+    {"needs": "raye-desktop", "add": (), "remove": ("qsynth",), "raye_brought": True},
 )
 # apt's own record of what was installed and by which command; an image
 # ships it empty, so a package named in it was put there after the install
@@ -1244,6 +1250,9 @@ def obsolete_plan(coming=()):
         if gone and entry.get("image_only"):
             chosen = installed_by_a_person(gone)
             gone = [n for n in gone if n not in chosen]
+        if gone and entry.get("raye_brought"):
+            brought = brought_by_raye(gone)
+            gone = [n for n in gone if n in brought]
         if gone:
             args += [n for n in entry["add"] if n not in have] + [n + "-" for n in gone]
     return args
@@ -1277,6 +1286,43 @@ def installed_by_a_person(names):
                 if pkg in names:
                     found.add(pkg)
     return found
+
+
+def brought_by_raye(names):
+    """The names among `names` that apt's history shows only coming in as
+    a dependency (", automatic") of an install no person asked for (no
+    Requested-By line: Raye Update runs as root on its own). One record of
+    a person's install, or a history that cannot be read, keeps a name out:
+    in doubt, nothing is removed."""
+    import gzip
+    raye, person = set(), set()
+    try:
+        files = sorted(f for f in os.listdir(APT_HISTORY) if f.startswith("history.log"))
+    except OSError:
+        return set()
+    for name in files:
+        path = os.path.join(APT_HISTORY, name)
+        try:
+            opener = gzip.open if name.endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except (OSError, EOFError, ValueError):
+            return set()
+        for block in re.split(r"\n\s*\n", text):
+            asked = re.search(r"^Requested-By:", block, re.M) is not None
+            for line in block.splitlines():
+                m = _HISTORY_LINE.match(line)
+                if not m:
+                    continue
+                for item in re.split(r"\),\s*", m.group(2)):
+                    pkg = item.strip().split(" ", 1)[0].split(":", 1)[0]
+                    if pkg not in names:
+                        continue
+                    if asked or "automatic" not in item or m.group(1) == "Reinstall":
+                        person.add(pkg)
+                    else:
+                        raye.add(pkg)
+    return raye - person
 
 
 def parse_removals(output):

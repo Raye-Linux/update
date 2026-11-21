@@ -1,3 +1,11 @@
+raye-update (1.0~beta2.1) resolute; urgency=medium
+
+  * Qsynth goes from PCs where an update brought it with Raye Synth (it is
+    only a suggestion of fluidsynth, and its window fails on JACK). A copy a
+    person installed stays.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Sat, 21 Nov 2026 12:00:00 +0000
+
 raye-update (1.0~beta2) resolute; urgency=medium
 
   * PCs on the Raye kernel get its new versions with the other updates;
