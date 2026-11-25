@@ -1,0 +1,20 @@
+[Unit]
+Description=Switch to the Raye kernel (Raye Linux 1.0)
+Documentation=https://github.com/Raye-Linux/update
+# after the step of an earlier start (key turned down, trial boot kept),
+# and before anyone signs in: the console shows the code for the blue
+# screen of the restart
+After=raye-kernel-finish.service NetworkManager.service plymouth-start.service
+Before=display-manager.service systemd-user-sessions.service
+ConditionPathExists=/usr/libexec/raye-kernel-setup
+ConditionKernelCommandLine=!boot=casper
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/raye-update kernel-switch
+# the kernel may be installed here (no Secure Boot), and the code waits
+# two minutes for a key
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

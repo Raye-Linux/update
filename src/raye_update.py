@@ -521,6 +521,12 @@ def raye_kernel_followups():
     """kernel_followups() for this PC, from dpkg and the apt indexes."""
     if not FOLLOW_RAYE_KERNEL:
         return []
+    # once linux-raye is published, kernel updates come through it, and
+    # raye-kernel-setup installs it only after the key that signs it is in:
+    # by name, the kernel of the 1.0 release would go in on a PC of the
+    # beta, signed with a key it does not have yet
+    if run(["apt-cache", "show", "linux-raye"])[0] == 0:
+        return []
     images = _installed("linux-image-*-raye")
     if not images:
         return []
@@ -1158,6 +1164,138 @@ class OfflineScreen:
                 f.write(body)
         except OSError:
             pass                    # never in the way of the install
+
+
+# --- the switch to the Raye kernel (Raye Linux 1.0) ---------------------------
+
+KERNEL_SETUP = "/usr/libexec/raye-kernel-setup"
+# starts that tried the switch: three, then it is left to Settings
+KERNEL_SWITCH_TRIES = "/var/lib/raye-update/kernel-switch-tries"
+MAX_KERNEL_SWITCH_TRIES = 3
+# how long the code stays up for a key before the start goes on
+KERNEL_KEY_WAIT = 120
+KERNEL_WORDS = {
+    "en": {
+        "code": "\n\n    Raye Linux 1.0: one last step, the Raye kernel\n\n"
+                "    Your code:   {code}\n\n"
+                "    After the restart, a blue screen shows for 10 seconds:\n"
+                "      1. Press any key.\n"
+                "      2. Choose \"Enroll MOK\", then \"Continue\", then \"Yes\".\n"
+                "      3. Type the code above and press Enter.\n"
+                "      4. Choose \"Reboot\".\n\n"
+                "    If you miss it, nothing breaks: Raye starts as usual.\n\n"
+                "    Press any key to restart now.\n"
+                "    Without a key, Raye goes on in {minutes} minutes and asks again at the next start.\n",
+        "installed": "\n\n    Raye Linux 1.0: switching to the Raye kernel.\n\n    Restarting...\n",
+    },
+    "fr": {
+        "code": "\n\n    Raye Linux 1.0 : une dernière étape, le noyau Raye\n\n"
+                "    Votre code :   {code}\n\n"
+                "    Après le redémarrage, un écran bleu s'affiche 10 secondes :\n"
+                "      1. Appuyez sur une touche.\n"
+                "      2. Choisissez « Enroll MOK », puis « Continue », puis « Yes ».\n"
+                "      3. Tapez le code ci-dessus et appuyez sur Entrée.\n"
+                "      4. Choisissez « Reboot ».\n\n"
+                "    Si vous le manquez, rien ne casse : Raye démarre normalement.\n\n"
+                "    Appuyez sur une touche pour redémarrer maintenant.\n"
+                "    Sans touche, Raye continue dans {minutes} minutes et vous le redemandera au prochain démarrage.\n",
+        "installed": "\n\n    Raye Linux 1.0 : passage au noyau Raye.\n\n    Redémarrage...\n",
+    },
+}
+
+
+def show_on_console(text):
+    """The words on the start-up console, the boot screen gone."""
+    run(["chvt", "1"], timeout=10)
+    try:
+        with open(TEXT_TTY, "a") as f:
+            f.write("\033[H\033[2J" + text)
+    except OSError:
+        pass
+
+
+def wait_for_key(seconds):
+    """True when a key is pressed on the console within `seconds`."""
+    import select
+    import termios
+    import tty
+    try:
+        fd = os.open(TEXT_TTY, os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return False
+    try:
+        old = termios.tcgetattr(fd)
+    except termios.error:
+        os.close(fd)
+        return False
+    try:
+        tty.setcbreak(fd)
+        termios.tcflush(fd, termios.TCIFLUSH)       # a key pressed earlier is not an answer
+        ready, _, _ = select.select([fd], [], [], seconds)
+        return bool(ready)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        os.close(fd)
+
+
+def _kernel_switch_tries():
+    try:
+        with open(KERNEL_SWITCH_TRIES) as f:
+            return int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _count_kernel_switch_try(n):
+    try:
+        os.makedirs(os.path.dirname(KERNEL_SWITCH_TRIES), exist_ok=True)
+        with open(KERNEL_SWITCH_TRIES, "w") as f:
+            f.write(f"{n}\n")
+    except OSError:
+        pass
+
+
+def kernel_switch():
+    """At start-up, before the sign-in screen: switch this PC to the Raye
+    kernel when raye-kernel-setup says it is due. With Secure Boot on, the
+    key is queued and the console shows the code for the blue screen of the
+    restart; a key restarts, no key withdraws the request and the start goes
+    on (never a loop of restarts nobody sees). Without Secure Boot the kernel
+    goes in at once and the PC restarts into its trial boot. Returns what
+    happened: not-due, given-up, offline, failed, code, left, installed."""
+    if not os.path.exists(KERNEL_SETUP):
+        return "not-due"
+    rc, out, _ = run([KERNEL_SETUP, "switch-due"], timeout=120)
+    if rc != 0 or out.strip() != "yes":
+        return "not-due"
+    tries = _kernel_switch_tries()
+    if tries >= MAX_KERNEL_SWITCH_TRIES:
+        return "given-up"
+    _, status, _ = run([KERNEL_SETUP, "status"], timeout=120)
+    if status.strip() == "no-secure-boot" and run(["nm-online", "-q", "-t", "60"], timeout=90)[0] != 0:
+        # the kernel may have to be downloaded: the next start, not a try
+        log("raye-update: no network for the Raye kernel, next start")
+        return "offline"
+    _count_kernel_switch_try(tries + 1)
+    rc, out, err = run([KERNEL_SETUP, "enroll"], timeout=1800)
+    if rc != 0:
+        log(f"raye-update: the switch to the Raye kernel did not start: {(out + err)[-300:]}")
+        return "failed"
+    words = KERNEL_WORDS[system_language()]
+    code = out.strip()
+    plymouth("quit")
+    if re.fullmatch(r"[0-9]{6}", code):
+        show_on_console(words["code"].format(code=" ".join(code), minutes=KERNEL_KEY_WAIT // 60))
+        if wait_for_key(KERNEL_KEY_WAIT):
+            power("restart")
+            return "code"
+        # nobody there: no blue screen at a restart nobody watches
+        run(["mokutil", "--revoke-import"], timeout=60)
+        log("raye-update: nobody pressed a key for the Raye key code, asked again next start")
+        return "left"
+    show_on_console(words["installed"])
+    power("restart")
+    return "installed"
 
 
 def power(then):
@@ -3047,6 +3185,9 @@ def main(argv):
         except OSError:
             pass
         run(["systemctl", "start", "--no-block", "raye-update.service"], timeout=60)
+        return 0
+    if command == "kernel-switch":
+        kernel_switch()
         return 0
     if command == "install-now":
         # the Install button: the install runs in its own unit, not under pkexec

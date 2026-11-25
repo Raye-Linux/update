@@ -22,6 +22,9 @@ override_dh_installsystemd:
 	# and never stopped by an upgrade of this package: that would kill the
 	# install it is part of
 	dh_installsystemd --name=raye-update-install --no-start --no-stop-on-upgrade raye-update-install.service
+	# at start-up only, before the sign-in screen; never started by the
+	# upgrade itself (it would restart the PC in the middle of it)
+	dh_installsystemd --name=raye-update-kernel-switch --no-start --no-stop-on-upgrade raye-update-kernel-switch.service
 
 override_dh_installsystemduser:
 	dh_installsystemduser --name=raye-update-notify

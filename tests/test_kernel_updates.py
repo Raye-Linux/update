@@ -45,6 +45,8 @@ class Apt:
             import fnmatch
             names = [n for n in self.installed if fnmatch.fnmatch(n, cmd[-1])]
             return 0, "".join("%s install ok installed\n" % n for n in names), ""
+        if cmd[:2] == ["apt-cache", "show"]:
+            return (0 if cmd[2] in self.available else 100), "", ""
         if cmd[:2] == ["apt-cache", "pkgnames"]:
             return 0, "".join(n + "\n" for n in self.available if n.startswith(cmd[2])), ""
         if cmd[0] == "apt-get" and "install" in cmd:
