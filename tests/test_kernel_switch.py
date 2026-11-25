@@ -25,7 +25,7 @@ class Setup:
         self.calls.append(cmd)
         if cmd[:1] == [ru.KERNEL_SETUP]:
             if cmd[1] == "switch-due":
-                return (0 if self.due == "yes" else 1), self.due + "\n", ""
+                return {"yes": 0, "restart": 2}.get(self.due, 1), self.due + "\n", ""
             if cmd[1] == "status":
                 return 0, self.status + "\n", ""
             if cmd[1] == "enroll":
@@ -192,3 +192,15 @@ def test_kernel_updates_come_with_linux_raye_once_it_is_published(monkeypatch):
     monkeypatch.setattr(ru, "run", run)
     monkeypatch.setattr(ru, "FOLLOW_RAYE_KERNEL", True)
     assert ru.raye_kernel_followups() == []
+
+
+def test_the_kernel_went_in_on_this_start_restart_into_it(world, monkeypatch):
+    # after the blue screen, the kernel goes in at this start: one restart
+    # more and the PC runs it, without anyone having to think of it
+    s = Setup(due="restart")
+    monkeypatch.setattr(ru, "run", s.run)
+    assert ru.kernel_switch() == "trial"
+    assert not any(c[:2] == [ru.KERNEL_SETUP, "enroll"] for c in s.calls)
+    [text] = world["shown"]
+    assert "Raye kernel" in text
+    assert world["tools"]["power"] == ["restart"] and tries(world) == 0

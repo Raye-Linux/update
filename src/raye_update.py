@@ -1262,10 +1262,18 @@ def kernel_switch():
     restart; a key restarts, no key withdraws the request and the start goes
     on (never a loop of restarts nobody sees). Without Secure Boot the kernel
     goes in at once and the PC restarts into its trial boot. Returns what
-    happened: not-due, given-up, offline, failed, code, left, installed."""
+    happened: not-due, trial, given-up, offline, failed, code, left,
+    installed."""
     if not os.path.exists(KERNEL_SETUP):
         return "not-due"
     rc, out, _ = run([KERNEL_SETUP, "switch-due"], timeout=120)
+    if rc == 2 and out.strip() == "restart":
+        # the kernel went in on this start (after the blue screen): its
+        # trial boot is the next one, restart into it now
+        plymouth("quit")
+        show_on_console(KERNEL_WORDS[system_language()]["installed"])
+        power("restart")
+        return "trial"
     if rc != 0 or out.strip() != "yes":
         return "not-due"
     tries = _kernel_switch_tries()
