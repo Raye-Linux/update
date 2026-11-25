@@ -16,3 +16,4 @@ data/50-raye-update.rules usr/share/polkit-1/rules.d
 data/org.raye.update.policy usr/share/polkit-1/actions
 docs/state.md usr/share/doc/raye-update
 data/60-raye-update-ac.rules usr/lib/udev/rules.d
+docs/insider.md usr/share/doc/raye-update
