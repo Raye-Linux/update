@@ -10,6 +10,10 @@ libexec=${RAYE_UPDATE_LIBEXEC:-/usr/libexec/raye-update}
 case "${1:-status}" in
     status|progress|archive-check|-h|--help) exec "$libexec" "$@" ;;
 esac
+# the update channel is read by anyone, changed as root
+if [ "${1:-}" = channel ] && [ "${2:-status}" = status ]; then
+    exec "$libexec" "$@"
+fi
 if [ "$(id -u)" -eq 0 ]; then
     exec "$libexec" "$@"
 fi

@@ -924,6 +924,132 @@ def archive_notes(cfg, pinned=None, release=False):
     return _archive_findings(cfg, pinned, release)[1]
 
 
+# Raye Insider: the update channel. Stable is the archive's own suite in
+# raye.sources, a conffile of raye-archive-keyring that this file never
+# writes; every other channel is ONE more suite of the same archive -- same
+# mirrors, same key -- in a file that only Raye Update writes. apt then takes
+# the newest version of each package from either suite, so leaving a channel
+# never downgrades anything: what came from it stays until Stable catches up.
+INSIDER_SOURCE = "/etc/apt/sources.list.d/raye-insider.sources"
+CHANNELS = ("stable", "public-beta", "beta", "dev")
+CHANNEL_SUITES = {"public-beta": "resolute-public-beta",
+                  "beta": "resolute-beta", "dev": "resolute-dev"}
+# a test tree may stand in for the mirrors (root only, never a setting):
+# https, or a local folder given by its absolute path
+_INSIDER_URI = re.compile(r"^(?:(?:mirror\+file|file):/[^\s]*|https://[^\s/]+(?:/[^\s]*)?)$")
+
+
+class InsiderError(Exception):
+    pass
+
+
+def current_channel(source=None):
+    """The channel this PC is on: stable without our file, unknown when the
+    file names a suite that is not one of ours."""
+    try:
+        with open(source or INSIDER_SOURCE) as f:
+            suite = parse_deb822(f.read()).get("suites", "").strip()
+    except OSError:
+        return "stable"
+    for channel, name in CHANNEL_SUITES.items():
+        if suite == name:
+            return channel
+    return "unknown"
+
+
+def insider_source_text(channel, cfg=None):
+    """The apt source of a channel: its suite on the archive's mirrors."""
+    if channel not in CHANNEL_SUITES:
+        raise ValueError(channel)
+    cfg = cfg or archive_config()
+    if not cfg.get("exists") or not cfg.get("uris") or not cfg.get("keyring"):
+        raise InsiderError(f"no Raye archive source in {cfg.get('source')}")
+    uris, keyring = " ".join(cfg["uris"]), cfg["keyring"]
+    test_uris = os.environ.get("RAYE_INSIDER_URIS")
+    if test_uris is not None:
+        if not _INSIDER_URI.match(test_uris):
+            raise InsiderError(f"a test tree is https or an absolute folder: {test_uris!r}")
+        test_key = os.environ.get("RAYE_INSIDER_KEYRING", "")
+        if not (test_key.startswith("/") and os.path.isfile(test_key)
+                and not re.search(r"\s", test_key)):
+            raise InsiderError("a test tree needs RAYE_INSIDER_KEYRING, an existing keyring")
+        uris, keyring = test_uris, test_key
+    return ("# Raye Insider channel, written by Raye Update. Change it in\n"
+            "# Settings > Raye Update > Raye Insider (or: raye-update channel set stable).\n"
+            f"Types: deb\nURIs: {uris}\nSuites: {CHANNEL_SUITES[channel]}\n"
+            "Components: main\nArchitectures: amd64\n"
+            f"Signed-By: {keyring}\n")
+
+
+def set_channel(channel, source=None):
+    """Moves this PC to `channel`; returns the one it was on."""
+    if channel not in CHANNELS:
+        raise ValueError(channel)
+    path = source or INSIDER_SOURCE
+    before = current_channel(path)
+    if channel == "stable":
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        return before
+    text = insider_source_text(channel)       # raises before anything is written
+    directory = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".raye-insider-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return before
+
+
+LEAVE_NOTE = ("Back on Stable. Nothing is downgraded: the newer versions you got stay "
+              "until Stable catches up, and they keep getting their fixes from Stable then.")
+
+
+def channel_command(args):
+    """`raye-update channel [status]` for anyone, `channel set NAME` as root."""
+    if args in ([], ["status"]):
+        channel = current_channel()
+        print(json.dumps({"channel": channel, "suite": CHANNEL_SUITES.get(channel, ""),
+                          "channels": list(CHANNELS), "source": INSIDER_SOURCE}, indent=2))
+        return 0
+    if len(args) not in (2, 3) or args[0] != "set" or args[1] not in CHANNELS \
+            or args[2:] not in ([], ["--no-check"]):
+        print("raye-update: channel [status] | channel set "
+              + "|".join(CHANNELS) + " [--no-check]", file=sys.stderr)
+        return 2
+    if os.geteuid() != 0:
+        print("raye-update: needs root", file=sys.stderr)
+        return 1
+    try:
+        before = set_channel(args[1])
+    except InsiderError as e:
+        print(f"raye-update: {e}", file=sys.stderr)
+        return 1
+    log(f"raye-update: update channel {before} -> {args[1]}")
+    if args[1] == "stable" and before != "stable":
+        print(LEAVE_NOTE)
+    if args[2:] != ["--no-check"]:
+        # a new channel is a new set of updates: look for them now, as a
+        # person asked (check-now)
+        try:
+            os.makedirs(os.path.dirname(CHECK_ASKED), exist_ok=True)
+            with open(CHECK_ASKED, "w") as f:
+                f.write(f"{time.time():.0f}\n")
+        except OSError:
+            pass
+        run(["systemctl", "start", "--no-block", "raye-update.service"], timeout=60)
+    return 0
+
+
 def is_lock_error(text):
     return bool(re.search(r"Could not get lock|Unable to acquire the dpkg frontend lock|"
                           r"is held by process", text or ""))
@@ -3155,6 +3281,8 @@ def main(argv):
         return 0
     if command == "progress":
         return progress_loop()
+    if command == "channel":
+        return channel_command(args)       # the status for anyone, set as root
     if command == "archive-check":
         # only reads /etc, so no root: a check that asks for a password is a
         # check nobody runs
