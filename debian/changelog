@@ -1,3 +1,23 @@
+raye-update (1.0~rc3) resolute; urgency=medium
+
+  * After the update to Raye Linux 1.0, the next start switches to the Raye
+    kernel. With Secure Boot on, it shows a six-digit code and the steps for
+    the blue screen before restarting.
+  * If nobody is at the PC, the start goes on as usual and the switch is
+    offered again at the next start (three times at most).
+  * Right after the key is enrolled, the PC restarts once more into the Raye
+    kernel by itself.
+  * Raye Update can move your PC between the Stable, Public Beta, Beta and
+    Dev update channels (raye-update channel).
+  * Going back to Stable never downgrades anything: newer versions stay
+    until Stable catches up.
+  * Restart now while updates install in use now restarts as soon as they
+    are done, instead of doing nothing.
+  * A restart or shutdown waits 5 minutes at most for updates that install
+    in use.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 26 Nov 2026 03:00:00 +0000
+
 raye-update (1.0~beta2.1) resolute; urgency=medium
 
   * Qsynth goes from PCs where an update brought it with Raye Synth (it is
