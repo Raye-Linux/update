@@ -2,6 +2,7 @@
 """Updates that need no restart install while the PC is in use; only the
 ones that do wait for the next start-up."""
 import os
+import re
 
 import pytest
 
@@ -426,3 +427,56 @@ def test_the_live_unit_cleans_up_after_itself():
     unit = open(os.path.join(os.path.dirname(__file__), "..", "data",
                              "raye-update-live@.service")).read()
     assert "ExecStopPost=/usr/libexec/raye-update live-ended" in unit
+
+
+# Restart now during an install in use (measured on rc2 in VM 130): apt holds
+# a block inhibitor while dpkg works, so `systemctl reboot` was refused
+# ("Operation denied due to active block inhibitor"), nobody read the
+# refusal, and the PC stayed armed until someone restarted it by hand.
+
+def test_restart_now_during_an_install_in_use_waits_for_its_end(apt, no_tools, monkeypatch, capsys):
+    monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(ru, "system_stopping", lambda: False)
+    st = downloaded(apt)
+    st.phase = "installing"
+    ru.save(st)
+    with ru.live_lock() as held:
+        assert held is not None
+        assert ru.main(["raye-update", "arm", "--then", "restart", "--now"]) == 0
+        assert no_tools["power"] == []          # not while dpkg works
+        armed = ru.load().armed
+        assert armed and armed.get("afterInstall") is True
+    assert "restarts when the updates in use are installed" in capsys.readouterr().err
+    ru.main(["raye-update", "live-ended"])
+    assert no_tools["power"] == ["restart"]
+    assert not ru.load().armed.get("afterInstall")
+    assert ru.load().phase == "armed"
+
+
+def test_restart_after_the_install_in_use_not_while_the_pc_stops(apt, no_tools, monkeypatch):
+    monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
+    st = downloaded(apt)
+    st.phase = "installing"
+    ru.save(st)
+    with ru.live_lock():
+        monkeypatch.setattr(ru, "system_stopping", lambda: False)
+        assert ru.main(["raye-update", "arm", "--then", "restart", "--now"]) == 0
+    monkeypatch.setattr(ru, "system_stopping", lambda: True)
+    ru.main(["raye-update", "live-ended"])
+    assert no_tools["power"] == []
+
+
+def test_restart_now_without_an_install_in_use_restarts_at_once(apt, no_tools, monkeypatch):
+    monkeypatch.setattr(ru.os, "geteuid", lambda: 0)
+    st = downloaded(apt)
+    st.phase = "installing"         # left by an install that died
+    ru.save(st)
+    assert ru.main(["raye-update", "arm", "--then", "restart", "--now"]) == 0
+    assert no_tools["power"] == ["restart"]
+
+
+def test_the_live_unit_does_not_hold_a_shutdown_for_twenty_minutes():
+    unit = open(os.path.join(os.path.dirname(__file__), "..", "data",
+                             "raye-update-live@.service")).read()
+    value = re.search(r"^TimeoutStopSec=(\d+)min$", unit, re.M)
+    assert value and int(value.group(1)) <= 5

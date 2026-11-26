@@ -1434,8 +1434,15 @@ def kernel_switch():
 
 def power(then):
     """Restart or turn off the machine. --no-block: the reboot stops the unit
-    that called it, which must be allowed to end first."""
-    subprocess.run(["systemctl", "--no-block", "poweroff" if then == "shutdown" else "reboot"])
+    that called it, which must be allowed to end first. False when systemd
+    refused (an inhibitor, such as the one apt holds while dpkg works): the
+    refusal goes to the journal instead of being lost."""
+    r = subprocess.run(["systemctl", "--no-block", "poweroff" if then == "shutdown" else "reboot"],
+                       capture_output=True, text=True)
+    if r is not None and getattr(r, "returncode", 0) != 0:
+        log(f"raye-update: the restart was refused: {(r.stderr or r.stdout or '').strip()[-300:]}")
+        return False
+    return True
 
 
 # --- check and download -----------------------------------------------------
@@ -3420,7 +3427,9 @@ def run_live(args, now):
 
 def live_ended():
     """After raye-update-live@ stops: one that died without writing its end
-    would show "Installing updates" until the next check, hours later."""
+    would show "Installing updates" until the next check, hours later. And
+    the restart someone asked for while it ran (arm --now) happens now."""
+    restart = False
     with live_lock() as held:
         if held is None:
             return 0                # another install in use runs
@@ -3431,6 +3440,18 @@ def live_ended():
                 state.installPercent = 0
                 clear_marks(state)
                 save(state)
+            if state.armed and state.armed.get("afterInstall"):
+                state.armed.pop("afterInstall", None)
+                if state.phase == "installing":
+                    state.phase = "armed"
+                save(state)
+                # the PC already stops (that is what stopped the install):
+                # the restart is under way
+                restart = not system_stopping()
+    if restart:
+        log("raye-update: the updates in use are installed, restarting as asked")
+        catch_up_before_restart(time.time(), asked=True)
+        power("restart")
     return 0
 
 
@@ -3455,6 +3476,7 @@ def run_command(command, args, state, now):
         except ValueError:
             print("raye-update: arm --then restart|shutdown [--at TIME] [--now]", file=sys.stderr)
             return 2
+        was_in_use = state.phase == "installing" and not state.armed
         rc = arm(state, then, at, now)
         if rc == 3:
             print("raye-update: no updates are downloaded", file=sys.stderr)
@@ -3463,6 +3485,13 @@ def run_command(command, args, state, now):
             print("raye-update: another install is already set up for the next start",
                   file=sys.stderr)
             return 4
+        if right_now and was_in_use and live_running():
+            # apt holds a block inhibitor while dpkg works: a restart now is
+            # refused. The end of the install in use (live-ended) restarts.
+            state.armed["afterInstall"] = True
+            log("raye-update: the PC restarts when the updates in use are installed")
+            save(state)
+            return 0
         save(state)
         if right_now:
             restart_soon(asked=True)   # the install runs at start-up, then "then" applies

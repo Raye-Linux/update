@@ -443,10 +443,23 @@ def test_download_firmware_drops_a_bad_download(tmp_path):
 
 def test_power_does_not_wait_for_the_reboot(monkeypatch):
     runs = []
-    monkeypatch.setattr(ru.subprocess, "run", lambda cmd, **kw: runs.append(cmd))
+
+    def fake(cmd, **kw):
+        runs.append(cmd)
+        return ru.subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(ru.subprocess, "run", fake)
     ru.power("restart")
     ru.power("shutdown")
     assert runs == [["systemctl", "--no-block", "reboot"], ["systemctl", "--no-block", "poweroff"]]
+
+
+def test_power_says_when_the_restart_is_refused(monkeypatch, capsys):
+    # what systemd answers while apt holds its block inhibitor
+    monkeypatch.setattr(ru.subprocess, "run", lambda cmd, **kw: ru.subprocess.CompletedProcess(
+        cmd, 1, "", "Call to Reboot failed: Operation denied due to active block inhibitor\n"))
+    assert ru.power("restart") is False
+    err = capsys.readouterr().err
+    assert "the restart was refused" in err and "block inhibitor" in err
 
 
 def test_fetch_uses_fwupds_own_downloader(tmp_path, monkeypatch):

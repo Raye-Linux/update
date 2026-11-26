@@ -12,7 +12,9 @@ ExecStart=/usr/libexec/raye-update install-live %i
 ExecStopPost=/usr/libexec/raye-update live-ended
 Nice=10
 IOSchedulingClass=idle
-# a restart or shutdown waits for dpkg to finish instead of cutting it
+# a restart or shutdown waits for dpkg to finish instead of cutting it, 5
+# minutes at most (an install in use takes about one); one cut short is
+# finished by the next start (dpkg --configure -a)
 KillSignal=SIGCONT
-TimeoutStopSec=20min
+TimeoutStopSec=5min
 TimeoutStartSec=2h
