@@ -15,7 +15,7 @@ def fake_tool(bin_dir, name, body):
     tool.chmod(0o755)
 
 
-def run_notify(tmp_path, state, answer="later", arm_rc=0, plasma_rc=0, lang="C.UTF-8"):
+def run_notify(tmp_path, state, answer="later", arm_rc=0, plasma_rc=0, lang="C.UTF-8", language=""):
     (tmp_path / "state.json").write_text(json.dumps(state))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -27,7 +27,8 @@ def run_notify(tmp_path, state, answer="later", arm_rc=0, plasma_rc=0, lang="C.U
                                  f'case "$*" in *org.kde.Shutdown*) exit {plasma_rc};; esac')
     fake_tool(bin_dir, "pkgcli", f'echo "pkgcli $*" >> {calls}')
     fake_tool(bin_dir, "systemctl", f'echo "systemctl $*" >> {calls}')
-    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", LANG=lang,
+    # LANGUAGE as Settings writes it; empty: the machine's own does not leak in
+    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", LANG=lang, LANGUAGE=language,
                HOME=str(tmp_path), XDG_STATE_HOME=str(tmp_path / "st"),
                RAYE_UPDATE_STATE=str(tmp_path / "state.json"))
     subprocess.run(["sh", str(SCRIPT)], env=env, check=True, timeout=30)

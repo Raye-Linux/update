@@ -1236,6 +1236,14 @@ TEXT_WORDS = {
     "fr": {"updates": "Mise à jour en cours  {n}%", "note": "N'éteignez pas votre PC",
            "slow": "Préparation de la nouvelle version du système. "
                    "Cela peut prendre quelques minutes."},
+    "es": {"updates": "Trabajando en las actualizaciones  {n}%", "note": "No apagues el PC",
+           "slow": "Preparando la nueva versión del sistema. Esto puede tardar unos minutos."},
+    "de": {"updates": "Updates werden bearbeitet  {n}%", "note": "Schalten Sie den PC nicht aus",
+           "slow": "Die neue Version des Systems wird vorbereitet. Dies kann einige Minuten dauern."},
+    "pt": {"updates": "Trabalhando nas atualizações  {n}%", "note": "Não desligue o PC",
+           "slow": "Preparando a nova versão do sistema. Isso pode levar alguns minutos."},
+    "it": {"updates": "Aggiornamenti in corso  {n}%", "note": "Non spegnere il PC",
+           "slow": "Preparazione della nuova versione del sistema. Può richiedere qualche minuto."},
 }
 
 
@@ -1326,6 +1334,58 @@ KERNEL_WORDS = {
                 "    Appuyez sur une touche pour redémarrer maintenant.\n"
                 "    Sans touche, Raye continue dans {minutes} minutes et vous le redemandera au prochain démarrage.\n",
         "installed": "\n\n    Raye Linux 1.0 : passage au noyau Raye.\n\n    Redémarrage...\n",
+    },
+    "es": {
+        "code": "\n\n    Raye Linux 1.0: un último paso, el kernel de Raye\n\n"
+                "    Tu código:   {code}\n\n"
+                "    Después del reinicio, se muestra una pantalla azul durante 10 segundos:\n"
+                "      1. Presiona cualquier tecla.\n"
+                "      2. Elige \"Enroll MOK\", luego \"Continue\" y luego \"Yes\".\n"
+                "      3. Escribe el código de arriba y presiona Entrar.\n"
+                "      4. Elige \"Reboot\".\n\n"
+                "    Si te lo pierdes, no se rompe nada: Raye se inicia como siempre.\n\n"
+                "    Presiona cualquier tecla para reiniciar ahora.\n"
+                "    Sin tecla, Raye continúa en {minutes} minutos y te lo vuelve a pedir en el próximo inicio.\n",
+        "installed": "\n\n    Raye Linux 1.0: cambiando al kernel de Raye.\n\n    Reiniciando...\n",
+    },
+    "de": {
+        "code": "\n\n    Raye Linux 1.0: ein letzter Schritt, der Raye-Kernel\n\n"
+                "    Ihr Code:   {code}\n\n"
+                "    Nach dem Neustart wird 10 Sekunden lang ein blauer Bildschirm angezeigt:\n"
+                "      1. Drücken Sie eine beliebige Taste.\n"
+                "      2. Wählen Sie \"Enroll MOK\", dann \"Continue\", dann \"Yes\".\n"
+                "      3. Geben Sie den Code oben ein, und drücken Sie die Eingabetaste.\n"
+                "      4. Wählen Sie \"Reboot\".\n\n"
+                "    Wenn Sie ihn verpassen, geht nichts kaputt: Raye startet wie gewohnt.\n\n"
+                "    Drücken Sie eine beliebige Taste, um jetzt neu zu starten.\n"
+                "    Ohne Taste fährt Raye in {minutes} Minuten fort und fragt beim nächsten Start erneut.\n",
+        "installed": "\n\n    Raye Linux 1.0: Wechsel zum Raye-Kernel.\n\n    Neustart...\n",
+    },
+    "pt": {
+        "code": "\n\n    Raye Linux 1.0: uma última etapa, o kernel do Raye\n\n"
+                "    Seu código:   {code}\n\n"
+                "    Depois da reinicialização, uma tela azul aparece por 10 segundos:\n"
+                "      1. Pressione qualquer tecla.\n"
+                "      2. Escolha \"Enroll MOK\", depois \"Continue\" e depois \"Yes\".\n"
+                "      3. Digite o código acima e pressione Enter.\n"
+                "      4. Escolha \"Reboot\".\n\n"
+                "    Se você perder, nada quebra: o Raye inicia como de costume.\n\n"
+                "    Pressione qualquer tecla para reiniciar agora.\n"
+                "    Sem tecla, o Raye continua em {minutes} minutos e pergunta de novo na próxima inicialização.\n",
+        "installed": "\n\n    Raye Linux 1.0: mudando para o kernel do Raye.\n\n    Reiniciando...\n",
+    },
+    "it": {
+        "code": "\n\n    Raye Linux 1.0: un ultimo passaggio, il kernel di Raye\n\n"
+                "    Il tuo codice:   {code}\n\n"
+                "    Dopo il riavvio, viene mostrata una schermata blu per 10 secondi:\n"
+                "      1. Premi un tasto qualsiasi.\n"
+                "      2. Scegli \"Enroll MOK\", poi \"Continue\", poi \"Yes\".\n"
+                "      3. Digita il codice qui sopra e premi Invio.\n"
+                "      4. Scegli \"Reboot\".\n\n"
+                "    Se lo perdi, non si rompe nulla: Raye si avvia come al solito.\n\n"
+                "    Premi un tasto qualsiasi per riavviare ora.\n"
+                "    Senza tasto, Raye prosegue tra {minutes} minuti e lo chiede di nuovo al prossimo avvio.\n",
+        "installed": "\n\n    Raye Linux 1.0: passaggio al kernel di Raye.\n\n    Riavvio in corso...\n",
     },
 }
 

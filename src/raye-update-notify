@@ -40,7 +40,46 @@ names=$(printf '%s\n' "$info" | sed -n 3p)
 mkdir -p "$(dirname "$seen")"
 echo "$ready" > "$seen"
 
-case "${LANG:-}" in
+# the language of the session (LANGUAGE, as Settings writes it), else of the formats
+lang=${LANGUAGE:-${LANG:-}}
+lang=${lang%%:*}
+case "$lang" in
+    es*) title="Las actualizaciones están listas"
+         if [ "$count" = 1 ]; then
+             body="1 actualización descargada. Reinicia ahora para instalarla."
+         else
+             body="$count actualizaciones descargadas. Reinicia ahora para instalarlas."
+         fi
+         [ -n "$names" ] && body="$body
+Reinicio necesario: $names"
+         now="Reiniciar ahora"; later="Más tarde" ;;
+    de*) title="Updates sind bereit"
+         if [ "$count" = 1 ]; then
+             body="1 Update heruntergeladen. Starten Sie jetzt neu, um es zu installieren."
+         else
+             body="$count Updates heruntergeladen. Starten Sie jetzt neu, um sie zu installieren."
+         fi
+         [ -n "$names" ] && body="$body
+Neustart erforderlich: $names"
+         now="Jetzt neu starten"; later="Später" ;;
+    pt*) title="As atualizações estão prontas"
+         if [ "$count" = 1 ]; then
+             body="1 atualização baixada. Reinicie agora para instalá-la."
+         else
+             body="$count atualizações baixadas. Reinicie agora para instalá-las."
+         fi
+         [ -n "$names" ] && body="$body
+Reinicialização necessária: $names"
+         now="Reiniciar agora"; later="Mais tarde" ;;
+    it*) title="Gli aggiornamenti sono pronti"
+         if [ "$count" = 1 ]; then
+             body="1 aggiornamento scaricato. Riavvia ora per installarlo."
+         else
+             body="$count aggiornamenti scaricati. Riavvia ora per installarli."
+         fi
+         [ -n "$names" ] && body="$body
+Riavvio necessario: $names"
+         now="Riavvia ora"; later="Più tardi" ;;
     fr*) title="Mises à jour prêtes"
          if [ "$count" = 1 ]; then
              body="1 mise à jour téléchargée. Redémarrez maintenant pour l'installer."
