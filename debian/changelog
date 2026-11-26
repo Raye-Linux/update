@@ -15,6 +15,9 @@ raye-update (1.0~rc3) resolute; urgency=medium
     are done, instead of doing nothing.
   * A restart or shutdown waits 5 minutes at most for updates that install
     in use.
+  * Raye Update speaks Spanish, German, Brazilian Portuguese and Italian at
+    start-up, at the Raye kernel step and in its notification, which now
+    follows the display language.
 
  -- techoraye <190692880+techoraye@users.noreply.github.com>  Thu, 26 Nov 2026 03:00:00 +0000
 
