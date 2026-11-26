@@ -6,8 +6,16 @@
   <action id="org.raye.update">
     <description>Install or schedule updates</description>
     <description xml:lang="fr">Installer ou planifier les mises à jour</description>
+    <description xml:lang="es">Instalar o programar actualizaciones</description>
+    <description xml:lang="de">Updates installieren oder planen</description>
+    <description xml:lang="pt_BR">Instalar ou agendar atualizações</description>
+    <description xml:lang="it">Installa o pianifica gli aggiornamenti</description>
     <message>Updating this PC needs your permission</message>
     <message xml:lang="fr">La mise à jour de ce PC demande votre autorisation</message>
+    <message xml:lang="es">Para actualizar este PC se necesita tu permiso</message>
+    <message xml:lang="de">Zum Aktualisieren dieses PCs ist Ihre Erlaubnis erforderlich</message>
+    <message xml:lang="pt_BR">Atualizar este PC exige sua permissão</message>
+    <message xml:lang="it">Per aggiornare questo PC serve la tua autorizzazione</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
