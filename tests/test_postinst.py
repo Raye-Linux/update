@@ -26,7 +26,8 @@ def run(tmp_path, *args, users=(("1000", "testr"),), socket_for=("1000",)):
     (bin_dir / "getent").write_text(f"#!/bin/sh\n{lines}\nexit 0\n")
     # its own record: the systemctl calls stay what the tests above compare
     (bin_dir / "raye-update").write_text(f'#!/bin/sh\necho "$*" >> {tmp_path / "raye-calls"}\n')
-    for tool in ("systemctl", "getent", "raye-update"):
+    (bin_dir / "systemd-run").write_text(f'#!/bin/sh\necho "$*" >> {tmp_path / "run-calls"}\n')
+    for tool in ("systemctl", "getent", "raye-update", "systemd-run"):
         (bin_dir / tool).chmod(0o755)
     script = tmp_path / "postinst"
     script.write_text(POSTINST.read_text().replace("#DEBHELPER#", ""))
@@ -83,3 +84,16 @@ def test_a_failing_arm_if_split_never_fails_the_install(tmp_path):
     env = dict(os.environ, RAYE_UPDATE=str(bin_dir / "raye-update"),
                RAYE_USER_RUNTIME=str(tmp_path / "none"), RAYE_SYSTEMD_RUN=str(tmp_path / "none"))
     assert subprocess.run(["sh", str(script), "configure"], env=env, timeout=30).returncode == 0
+
+
+def test_upgrade_checks_again_once_the_install_in_use_ends(tmp_path):
+    # the fix of a broken release is armed by a check that runs after this
+    # install, which may hold the state while arm-if-split runs
+    run(tmp_path, "configure", "1.0.1")
+    calls = (tmp_path / "run-calls").read_text().splitlines()
+    assert len(calls) == 1 and "--on-active=90" in calls[0] and "raye-update.service" in calls[0]
+
+
+def test_no_later_check_outside_configure(tmp_path):
+    run(tmp_path, "abort-upgrade", "1.0.1")
+    assert not (tmp_path / "run-calls").exists()

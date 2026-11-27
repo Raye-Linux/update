@@ -2279,6 +2279,43 @@ def split_raye_sources(pending, installed=None):
     return split
 
 
+# Raye releases known to break a PC (1.0.1: the taskbar froze some desktops,
+# mouse and keyboard included). When one is installed and a newer version
+# waits, nobody can be asked to click: the fix is armed at once and the PC
+# restarts on its own a few minutes later to install it.
+BROKEN_RELEASES = {"raye-shell": ("1.0.1",)}
+BROKEN_RESTART_DELAY = 300
+
+
+def broken_installed(pending, installed=None):
+    """Names of the Raye packages installed at a release known to break a
+    PC, for which a newer version waits in `pending`."""
+    installed = dpkg_installed() if installed is None else installed
+    out = set()
+    for p in pending:
+        if not is_raye(p):
+            continue
+        name = _base(p["name"])
+        bad = BROKEN_RELEASES.get(name, ())
+        mine = installed.get(name)
+        if mine and mine[0] in bad and version_newer(p.get("to", ""), mine[0]):
+            out.add(name)
+    return out
+
+
+def arm_broken(state, now, link=None, target=None):
+    """Arm the set with a restart in BROKEN_RESTART_DELAY seconds when a
+    broken release is installed and its fix is downloaded. True when armed."""
+    broken = broken_installed(state.pending)
+    if not broken or not state.readyId or state.armed:
+        return False
+    if arm(state, "restart", now + BROKEN_RESTART_DELAY, now, link, target) != 0:
+        return False
+    log("raye-update: " + ", ".join(sorted(broken))
+        + " is a release that breaks some PCs: its fix installs at a restart in a few minutes")
+    return True
+
+
 def version_newer(a, b):
     """True when Debian version a is newer than b (dpkg's own comparison)."""
     if a == b:
@@ -3307,6 +3344,10 @@ def run_auto(state, command, now):
             with locked():
                 if not load().armed and arm(state, "restart", 0, now) == 0:
                     save(state)
+    if command == "auto" and state.phase == "ready" and state.readyId and not state.armed:
+        with locked():
+            if not load().armed and arm_broken(state, now):
+                save(state)
     save_run(state)
     if command == "auto" and live_waiting(state):
         start_live()
@@ -3464,6 +3505,8 @@ def arm_if_split(now, link=None, target=None):
         if split and arm(state, "restart", 0, now, link, target) == 0:
             log("raye-update: " + ", ".join(sorted(split))
                 + " installed in part, the rest installs at the next start")
+            save(state)
+        elif arm_broken(state, now, link, target):
             save(state)
     return 0
 

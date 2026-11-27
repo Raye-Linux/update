@@ -249,3 +249,34 @@ def test_arm_if_split_leaves_a_set_start_up_alone(raye_apt, paths):
     os.symlink("/somewhere/else", paths["link"])
     assert ru.arm_if_split(1000.0) == 0
     assert not ru.load().armed and os.readlink(paths["link"]) == "/somewhere/else"
+
+
+def test_a_broken_release_arms_its_fix_with_a_restart_soon(raye_apt, paths):
+    """raye-shell 1.0.1 froze some desktops: its fix cannot wait for a click."""
+    raye_apt([("raye-shell", "1.0.1", "raye-theme")])
+    st = ru.State(readyId="r1", phase="ready", pending=[
+        {"name": "raye-shell", "from": "1.0.1", "to": "1.0.2", "origin": "Raye:resolute",
+         "kind": "system", "restart": True}])
+    ru.save(st)
+    assert ru.arm_if_split(1000.0) == 0
+    st = ru.load()
+    assert st.phase == "armed"
+    assert st.armed == {"then": "restart", "at": 1000.0 + ru.BROKEN_RESTART_DELAY}
+    assert os.path.islink(paths["link"])
+    # and the restart timer takes it once that time comes, not before
+    assert ru.restart_decision(st, 1000.0, 12, False) is None
+    assert ru.restart_decision(st, 1000.0 + ru.BROKEN_RESTART_DELAY, 12, False) == "scheduled"
+
+
+def test_a_good_release_waits_for_the_person(raye_apt, paths):
+    raye_apt([("raye-shell", "1.0~rc3", "raye-theme")])
+    st = ru.State(readyId="r1", phase="ready", pending=[
+        {"name": "raye-shell", "from": "1.0~rc3", "to": "1.0.2", "origin": "Raye:resolute",
+         "kind": "system", "restart": True}])
+    ru.save(st)
+    assert ru.arm_if_split(1000.0) == 0
+    assert not ru.load().armed
+    assert not os.path.lexists(paths["link"])
+    # an Ubuntu package of the same name is not Raye's broken release
+    assert ru.broken_installed([{"name": "raye-shell", "to": "9", "origin": "Ubuntu:26.04"}],
+                               {"raye-shell": ("1.0.1", "raye-theme", "1.0.1")}) == set()

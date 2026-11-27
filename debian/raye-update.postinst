@@ -11,6 +11,13 @@ if [ "$1" = configure ]; then
     # to 1.0 Beta) left some PCs without a sign-in screen: the rest installs
     # at their next start, whatever start that is. Never waits, never fails.
     timeout 60 "${RAYE_UPDATE:-/usr/libexec/raye-update}" arm-if-split >/dev/null 2>&1 || true
+    # the same call arms the fix of a release known to break a PC; when this
+    # install holds the state (an install in use), a check a minute and a
+    # half later does it instead. Never waits, never fails.
+    if [ -d "${RAYE_SYSTEMD_RUN:-/run/systemd/system}" ] && [ ! -e /system-update ]; then
+        systemd-run --no-block --quiet --on-active=90 --unit=raye-update-after-upgrade \
+            systemctl start --no-block raye-update.service >/dev/null 2>&1 || true
+    fi
     # debhelper reloads systemd before it enables raye-update-shutdown-screen:
     # one more, or the restart right after this upgrade does not run it
     if [ -d "${RAYE_SYSTEMD_RUN:-/run/systemd/system}" ]; then

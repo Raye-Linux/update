@@ -1,3 +1,12 @@
+raye-update (1.0.2) resolute; urgency=high
+
+  * A release known to break a PC (raye-shell 1.0.1, the taskbar with
+    several screens) does not wait for a click: once its fix is downloaded,
+    the update is set to install and the PC restarts on its own a few
+    minutes later, before anyone signs in.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Fri, 27 Nov 2026 05:17:42 +0000
+
 raye-update (1.0~rc3) resolute; urgency=medium
 
   * After the update to Raye Linux 1.0, the next start switches to the Raye
