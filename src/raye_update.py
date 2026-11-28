@@ -1083,6 +1083,14 @@ def battery_level(root="/sys/class/power_supply"):
             except OSError:
                 pass
         elif kind == "Battery":
+            # a wireless mouse, keyboard, headset or controller reports its own
+            # battery (scope "Device"): only the PC's battery counts, or a
+            # desktop with a low mouse waited for a charger it does not have
+            try:
+                if open(os.path.join(base, "scope")).read().strip().lower() == "device":
+                    continue
+            except OSError:
+                pass
             try:
                 levels.append(int(open(os.path.join(base, "capacity")).read().strip()))
             except (OSError, ValueError):

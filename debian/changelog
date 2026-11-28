@@ -1,3 +1,11 @@
+raye-update (1.0.3) resolute; urgency=high
+
+  * A desktop PC no longer waits "until your PC is plugged in": the battery
+    of a wireless mouse, keyboard, headset or controller does not count,
+    only the PC's own battery does.
+
+ -- techoraye <190692880+techoraye@users.noreply.github.com>  Sat, 28 Nov 2026 10:14:24 +0000
+
 raye-update (1.0.2) resolute; urgency=high
 
   * A release known to break a PC (raye-shell 1.0.1, the taskbar with
